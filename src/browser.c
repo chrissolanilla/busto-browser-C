@@ -168,10 +168,6 @@ static void handle_key(struct busto_window *window, const char *key, void *user_
                 "  - Use 'r' to reload current page"
             );
             refresh_display();
-        } else if (strlen(key) == 1 && key[0] >= 'a' && key[0] <= 'z') {
-            // Any other letter - show hint
-            busto_renderer_set_content("Press 'l' to focus URL bar, 'q' to quit, 'r' to reload, '?' for help");
-            refresh_display();
         }
     }
 

@@ -272,7 +272,7 @@ static void handle_global(void *data, struct wl_registry *registry,
                           uint32_t name, const char *interface,
                           uint32_t version) {
     struct busto_window *window = data;
-    
+
     if (strcmp(interface, "wl_compositor") == 0) {
         window->compositor =
             wl_registry_bind(registry, name, &wl_compositor_interface, 1);
@@ -351,10 +351,10 @@ static void keyboard_key(void *data, struct wl_keyboard *keyboard,
                         uint32_t serial, uint32_t time, uint32_t key,
                         uint32_t state) {
     struct busto_window *window = data;
-    
+
     if (state == WL_KEYBOARD_KEY_STATE_PRESSED && window->key_handler) {
-        const char *key_str = "?"; // default
-        
+        const char *key_str = NULL;
+
         if (key < 256 && keymap_simple[key] && strcmp(keymap_simple[key], "?") != 0) {
             key_str = keymap_simple[key];
         } else if (key == 22) {
@@ -382,10 +382,10 @@ static void keyboard_key(void *data, struct wl_keyboard *keyboard,
         } else if (key == 118) {
             key_str = "F5";
         } else {
-            printf("Unknown keycode: %u\n", key);
-            key_str = "?";
+            printf("unknown keycode: %u\n", key);
+            return;
         }
-        
+
         printf("Key: %u -> '%s'\n", key, key_str);
         window->key_handler(window, key_str, window->key_handler_data);
     }
@@ -395,7 +395,7 @@ static void keyboard_modifiers(void *data, struct wl_keyboard *keyboard,
                               uint32_t serial, uint32_t mods_depressed,
                               uint32_t mods_latched, uint32_t mods_locked,
                               uint32_t group) {
-    printf("Modifiers: depressed=%u, latched=%u, locked=%u, group=%u\n", 
+    printf("Modifiers: depressed=%u, latched=%u, locked=%u, group=%u\n",
            mods_depressed, mods_latched, mods_locked, group);
 }
 
@@ -405,10 +405,10 @@ static void keyboard_repeat_info(void *data, struct wl_keyboard *keyboard,
 }
 
 static const struct wl_keyboard_listener keyboard_listener = {
-    keyboard_keymap, 
-    keyboard_enter, 
+    keyboard_keymap,
+    keyboard_enter,
     keyboard_leave,
-    keyboard_key, 
+    keyboard_key,
     keyboard_modifiers,
     keyboard_repeat_info
 };
@@ -517,7 +517,7 @@ void busto_window_destroy(struct busto_window *window) {
     if (window->compositor) wl_compositor_destroy(window->compositor);
     if (window->registry) wl_registry_destroy(window->registry);
     if (window->display) wl_display_disconnect(window->display);
-    
+
     free(window);
 }
 
@@ -539,7 +539,7 @@ void busto_window_dispatch(struct busto_window *window) {
 
 void busto_window_redraw(struct busto_window *window) {
     if (!window) return;
-    
+
     busto_renderer_render(window->cr, window->width, window->height);
     wl_surface_attach(window->surface, window->buffer, 0, 0);
     wl_surface_damage(window->surface, 0, 0, window->width, window->height);

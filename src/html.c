@@ -260,9 +260,29 @@ void busto_html_extract_text(struct busto_html_element *element, char *buffer, s
         strncat(buffer, element->text, buffer_size - strlen(buffer) - 1);
     }
     
+    int is_block_element = 0;
+    if (element->tag && strcmp(element->tag, "#text") != 0) {
+        if (strcmp(element->tag, "p") == 0 || 
+            strcmp(element->tag, "div") == 0 ||
+            strcmp(element->tag, "h1") == 0 ||
+            strcmp(element->tag, "h2") == 0 ||
+            strcmp(element->tag, "h3") == 0 ||
+            strcmp(element->tag, "h4") == 0 ||
+            strcmp(element->tag, "h5") == 0 ||
+            strcmp(element->tag, "h6") == 0 ||
+            strcmp(element->tag, "li") == 0 ||
+            strcmp(element->tag, "br") == 0) {
+            is_block_element = 1;
+        }
+    }
+    
     struct busto_html_element *child = element->children;
     while (child) {
         busto_html_extract_text(child, buffer, buffer_size);
         child = child->next;
+    }
+    
+    if (is_block_element && strlen(buffer) > 0 && buffer[strlen(buffer) - 1] != '\n') {
+        strncat(buffer, "\n", buffer_size - strlen(buffer) - 1);
     }
 }

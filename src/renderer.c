@@ -57,17 +57,49 @@ void busto_renderer_render(cairo_t *cr, int width, int height) {
         cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
         cairo_set_font_size(cr, 14.0);
 
-        // Simple text rendering
         char *content_copy = strdup(renderer_state.content);
         char *line = strtok(content_copy, "\n");
         int y = 85 - renderer_state.scroll_y;
+        int max_width = width - 40;
 
         while (line && y < height - 20) {
             if (strlen(line) > 0) {
-                cairo_move_to(cr, 20, y);
-                cairo_show_text(cr, line);
+                cairo_text_extents_t extents;
+                cairo_text_extents(cr, line, &extents);
+                
+                if (extents.width > max_width) {
+                    char *pos = line;
+                    while (*pos && y < height - 20) {
+                        char temp_line[512];
+                        int char_count = 0;
+                        
+                        while (*pos && char_count < sizeof(temp_line) - 1) {
+                            temp_line[char_count++] = *pos++;
+                            temp_line[char_count] = '\0';
+                            
+                            cairo_text_extents(cr, temp_line, &extents);
+                            if (extents.width > max_width) {
+                                if (char_count > 1) {
+                                    pos--;
+                                    char_count--;
+                                    temp_line[char_count] = '\0';
+                                }
+                                break;
+                            }
+                        }
+                        
+                        cairo_move_to(cr, 20, y);
+                        cairo_show_text(cr, temp_line);
+                        y += 20;
+                    }
+                } else {
+                    cairo_move_to(cr, 20, y);
+                    cairo_show_text(cr, line);
+                    y += 20;
+                }
+            } else {
+                y += 20;
             }
-            y += 20;
             line = strtok(NULL, "\n");
         }
 
