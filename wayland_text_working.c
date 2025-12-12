@@ -30,7 +30,7 @@ void *shm_data;
 
 void render_text() {
     // Clear surface with white background
-    cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+    cairo_set_source_rgb(cr, 0.2, 0.2, 0.2);
     cairo_paint(cr);
 
     // Set up text rendering

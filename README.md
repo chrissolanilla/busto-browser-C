@@ -1,55 +1,35 @@
-# Wayland Text Rendering App
+# Busto Browser
 
-A simple C application that opens a Wayland window and renders text using Cairo.
 
-## Dependencies
 
-Install the required development libraries:
+## How to Use This Browser: DONT
 
-**Ubuntu/Debian:**
-```bash
-sudo apt-get install libwayland-dev libwayland-cursor-dev libcairo2-dev
-```
-
-**Fedora:**
-```bash
-sudo dnf install wayland-devel wayland-protocols-devel cairo-devel
-```
-
-**Arch:**
-```bash
-sudo pacman -S wayland cairo
-```
+1. **Run the browser:**
+   ```bash
+   ./busto-browser
+   ```
 
 ## Building
 
 ```bash
+sudo apt-get install libwayland-dev libwayland-cursor-dev libcairo2-dev libcurl4-openssl-dev
 make
-```
 
-## Running
-
-```bash
+./busto-browser
+# OR
 make run
-# or
-./wayland_text_app
 ```
 
-The application will create a 400x300 window displaying text rendered using Cairo on Wayland.
+### Dependencies
 
-## Features
 
-- Opens a Wayland window
-- Renders text using Cairo
-- Clean window title
-- Proper resource cleanup
+**Arch:**
+```bash
+sudo pacman -S wayland cairo libcurl
+```
 
-## Code Structure
+uses wayland, cairo, libcurl, and custom HTML parsing
 
-- `wayland_text_app.c` - Main application source
-- `Makefile` - Build configuration
+cooked
 
-The application uses:
-- Wayland client protocols for window management
-- Cairo for 2D graphics and text rendering
-- Standard C libraries
+COOKED
