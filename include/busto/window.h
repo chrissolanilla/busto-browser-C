@@ -19,18 +19,21 @@ struct busto_window {
     struct xdg_surface *xdg_surface;
     struct xdg_toplevel *xdg_toplevel;
     struct wl_buffer *buffer;
-    
+
     struct wl_seat *seat;
     struct wl_keyboard *keyboard;
-    
+
     cairo_surface_t *cairo_surface;
     cairo_t *cr;
-    
+
     int width;
     int height;
     int running;
+
+    //for it to work in gentoo
+    int configured;
     void *shm_data;
-    
+
     busto_key_handler_t key_handler;
     void *key_handler_data;
 };

@@ -303,10 +303,20 @@ static void xdg_wm_base_ping(void *data, struct xdg_wm_base *xdg_wm_base,
 static const struct xdg_wm_base_listener xdg_wm_base_listener = {
     xdg_wm_base_ping};
 
+static void create_buffer(struct busto_window *window);
+
+
 static void xdg_surface_configure(void *data, struct xdg_surface *xdg_surface,
                                   uint32_t serial) {
     struct busto_window *window = data;
     xdg_surface_ack_configure(xdg_surface, serial);
+
+    //only create the buffer and draw after we configure first
+    if(!window->configured) {
+        window->configured = 1;
+        create_buffer(window);
+    }
+
     busto_window_redraw(window);
 }
 
@@ -435,8 +445,10 @@ static void create_buffer(struct busto_window *window) {
 
     // Create shared memory pool
     struct wl_shm_pool *pool = wl_shm_create_pool(window->shm, fd, size);
-    window->buffer = wl_shm_pool_create_buffer(pool, 0, window->width, window->height, stride,
-                                              0); // ARGB32 format
+    //window->buffer = wl_shm_pool_create_buffer(pool, 0, window->width, window->height, stride,
+     //                                         0); // ARGB32 format
+    wl_shm_pool_create_buffer(pool, 0, window->width, window->height, stride, WL_SHM_FORMAT_ARGB8888);
+
 
     // Map memory
     window->shm_data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
@@ -496,7 +508,12 @@ struct busto_window *busto_window_create(int width, int height) {
         printf("No seat interface available - no keyboard input\n");
     }
 
-    create_buffer(window);
+    //we dont need this here anymore since its done after configuration
+    //create_buffer(window);
+    //without this, it becomes UB due to illegal gentoo linux laws fml
+    xdg_toplevel_set_title(window->xdg_toplevel, "Busto Browser");
+    wl_surface_commit(window->surface);
+    wl_display_roundtrip(window->display);
 
     return window;
 }
@@ -538,7 +555,8 @@ void busto_window_dispatch(struct busto_window *window) {
 }
 
 void busto_window_redraw(struct busto_window *window) {
-    if (!window) return;
+    //if (!window) return;
+    if (!window->configured || !window->buffer) return;
 
     busto_renderer_render(window->cr, window->width, window->height);
     wl_surface_attach(window->surface, window->buffer, 0, 0);
