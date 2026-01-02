@@ -7,6 +7,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <errno.h>
 
 // Simple keycode mapping for US keyboard
 static const char* keymap_simple[256] = {
@@ -307,7 +308,7 @@ static void create_buffer(struct busto_window *window);
 
 
 static void xdg_surface_configure(void *data, struct xdg_surface *xdg_surface,
-                                  uint32_t serial) {
+                                   uint32_t serial) {
     struct busto_window *window = data;
     xdg_surface_ack_configure(xdg_surface, serial);
 
@@ -443,21 +444,30 @@ static void create_buffer(struct busto_window *window) {
         exit(1);
     }
 
-    // Create shared memory pool
+    //create shared memory pool
     struct wl_shm_pool *pool = wl_shm_create_pool(window->shm, fd, size);
-    //window->buffer = wl_shm_pool_create_buffer(pool, 0, window->width, window->height, stride,
-     //                                         0); // ARGB32 format
-    wl_shm_pool_create_buffer(pool, 0, window->width, window->height, stride, WL_SHM_FORMAT_ARGB8888);
+    if (!pool) {
+        fprintf(stderr, "Failed to create SHM pool\n");
+        close(fd);
+        exit(1);
+    }
+
+    //assign it to window not just no where lmao
+    window->buffer = wl_shm_pool_create_buffer(pool, 0, window->width, window->height, stride, WL_SHM_FORMAT_ARGB8888);
+    if (!window->buffer) {
+        fprintf(stderr, "Failed to create Wayland buffer\n");
+        wl_shm_pool_destroy(pool);
+        close(fd);
+        exit(1);
+    }
 
 
-    // Map memory
     window->shm_data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (window->shm_data == MAP_FAILED) {
         fprintf(stderr, "Failed to mmap\n");
         exit(1);
     }
 
-    // Create Cairo surface
     window->cairo_surface = cairo_image_surface_create_for_data(
         window->shm_data, CAIRO_FORMAT_ARGB32, window->width, window->height, stride);
     window->cr = cairo_create(window->cairo_surface);
@@ -481,12 +491,17 @@ struct busto_window *busto_window_create(int width, int height) {
         return NULL;
     }
 
+
     window->registry = wl_display_get_registry(window->display);
     wl_registry_add_listener(window->registry, &registry_listener, window);
     wl_display_roundtrip(window->display);
 
     if (!window->compositor || !window->shm || !window->xdg_wm_base) {
-        fprintf(stderr, "Missing Wayland interfaces\n");
+        fprintf(stderr, "Missing Wayland interfaces:\n");
+        fprintf(stderr, "  compositor: %s\n", window->compositor ? "OK" : "MISSING");
+        fprintf(stderr, "  shm: %s\n", window->shm ? "OK" : "MISSING");
+        fprintf(stderr, "  xdg_wm_base: %s\n", window->xdg_wm_base ? "OK" : "MISSING");
+        fprintf(stderr, "  seat: %s\n", window->seat ? "OK" : "MISSING");
         busto_window_destroy(window);
         return NULL;
     }
@@ -502,8 +517,11 @@ struct busto_window *busto_window_create(int width, int height) {
     // Set up keyboard if seat is available
     if (window->seat) {
         window->keyboard = wl_seat_get_keyboard(window->seat);
-        wl_keyboard_add_listener(window->keyboard, &keyboard_listener, window);
-        printf("Keyboard interface set up successfully\n");
+        if (!window->keyboard) {
+            fprintf(stderr, "Failed to get keyboard interface\n");
+        } else {
+            wl_keyboard_add_listener(window->keyboard, &keyboard_listener, window);
+        }
     } else {
         printf("No seat interface available - no keyboard input\n");
     }
@@ -549,13 +567,23 @@ int busto_window_is_running(struct busto_window *window) {
 }
 
 void busto_window_dispatch(struct busto_window *window) {
-    if (window) {
-        wl_display_dispatch(window->display);
+    if (!window) return;
+    int rc = wl_display_dispatch(window->display);
+    if(rc < 0) {
+        fprintf(stderr, "wl_display_dispatch failed : %s\n", strerror(errno));
+        window->running = 0;
     }
+
+    /* { */
+    /*     wl_display_dispatch(window->display); */
+    /* } */
 }
 
 void busto_window_redraw(struct busto_window *window) {
-    //if (!window) return;
+    if (!window) {
+        fprintf(stderr, "Invalid window in redraw\n");
+        return;
+    }
     if (!window->configured || !window->buffer) return;
 
     busto_renderer_render(window->cr, window->width, window->height);
