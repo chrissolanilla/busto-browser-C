@@ -26,6 +26,9 @@ struct busto_window {
     cairo_surface_t *cairo_surface;
     cairo_t *cr;
 
+    //add a framerate for tick rate
+    int needs_redraw;
+
     int width;
     int height;
     int running;
@@ -52,6 +55,7 @@ void busto_window_dispatch(struct busto_window *window);
 void busto_window_redraw(struct busto_window *window);
 void busto_window_set_key_handler(struct busto_window *window, busto_key_handler_t handler, void *data);
 void busto_window_update_repeats(struct busto_window *window);
+void busto_window_request_redraw(struct busto_window *window);
 
 
 #endif

@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <poll.h>
+#include <unistd.h>
 
 static struct busto_input *g_input = NULL;
 static struct busto_window *g_window = NULL;
@@ -17,8 +19,9 @@ static pthread_t g_fetch_thread;
 static int g_fetching = 0;
 
 static void refresh_display(void) {
-    printf("Refreshing display...\n");
-    busto_window_redraw(g_window);
+    //printf("Refreshing display...\n");
+    //busto_window_redraw(g_window);
+    busto_window_request_redraw(g_window);
 }
 
 static void* fetch_url_thread(void *arg) {
@@ -227,9 +230,40 @@ int main(int argc, char *argv[]) {
     printf("If keys don't work, try clicking the window again.\n");
 
     // Main loop - just handle Wayland events
-    while (busto_window_is_running(g_window)) {
-        busto_window_dispatch(g_window);
+    while(busto_window_is_running(g_window)) {
+        //framerate tick
         busto_window_update_repeats(g_window);
+        //if something happens, redraw also
+        if(g_window->needs_redraw){
+            g_window->needs_redraw = 0;
+            busto_window_redraw(g_window);
+        }
+        // process any queued events
+        wl_display_dispatch_pending(g_window->display);
+        while(wl_display_prepare_read(g_window->display) !=0) {
+            wl_display_dispatch_pending(g_window->display);
+        }
+        wl_display_flush(g_window->display);
+
+        //wait a bit or until wayland got some info
+        int fd = wl_display_get_fd(g_window->display);
+
+        struct pollfd pfd = {
+            .fd = fd,
+            .events = POLLIN
+        };
+        //16 ms , but could use 8 for snappeir
+        int ret = poll(&pfd, 1, 16);
+        if(ret >0 && (pfd.revents & POLLIN)) {
+            wl_display_read_events(g_window->display);
+            wl_display_dispatch_pending(g_window->display);
+        }
+        else {
+            wl_display_cancel_read(g_window->display);
+        }
+
+        //busto_window_dispatch(g_window);
+        //busto_window_update_repeats(g_window);
     }
 
     // Cleanup

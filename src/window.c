@@ -369,7 +369,7 @@ static const char *keycode_to_string(uint32_t key) {
     if(key <256 && keymap_simple[key] && strcmp(keymap_simple[key], "?") !=0) {
         return keymap_simple[key];
     }
-    if (key == 22)  return "BackSpace";
+    //if (key == 22)  return "BackSpace";
     if (key == 36)  return "Return";
     if (key == 111) return "Up";
     if (key == 116) return "Down";
@@ -387,11 +387,15 @@ static void keyboard_key(void *data, struct wl_keyboard *keyboard,
                         uint32_t state) {
     struct busto_window *window = data;
 
+
     if(key >= 256) return;
     if(state == WL_KEYBOARD_KEY_STATE_PRESSED) {
         window->key_down[key]=1;
         //
         const char *key_str = keycode_to_string(key);
+        printf("[key] %s key=%u '%s'\n",
+           state == WL_KEYBOARD_KEY_STATE_PRESSED ? "down" : "up",
+           key, key_str ? key_str : "(null)");
 
         if(window->key_handler){
             window->key_handler(window,key_str, window->key_handler_data);
@@ -651,6 +655,10 @@ void busto_window_set_key_handler(struct busto_window *window, busto_key_handler
     }
 }
 
+void busto_window_request_redraw(struct busto_window *window) {
+    if (window) window->needs_redraw = 1;
+}
+
 void busto_window_update_repeats(struct busto_window *window) {
     if(!window || !window->key_handler) return;
     if(window->repeat_rate <= 0) return;
@@ -666,11 +674,14 @@ void busto_window_update_repeats(struct busto_window *window) {
 
         if (t >= next) {
             const char *key_str = keycode_to_string((uint32_t)key);//not sure what to put
-
             if(!key_str) continue;
+            printf("[repeat] key=%d '%s'\n", key, key_str);
+
             window->key_handler(window, key_str, window->key_handler_data);
 
             window->key_next_repeat_ms[key] = next + interval_ms;
+
+            busto_window_request_redraw(window);
 
             if (window->key_next_repeat_ms[key] < t - 200) {
                 window->key_next_repeat_ms[key] = t + interval_ms;
@@ -678,3 +689,5 @@ void busto_window_update_repeats(struct busto_window *window) {
         }
     }
 }
+
+
