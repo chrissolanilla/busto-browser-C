@@ -11,22 +11,20 @@
 
 ## Building
 
+if you got arch
 ```bash
-sudo apt-get install libwayland-dev libwayland-cursor-dev libcairo2-dev libcurl4-openssl-dev
+sudo pacman -S wayland wayland-protocols cairo libcurl pkgconf
 make
 
 ./busto-browser
-# OR
-make run
+```
+gentoo
+```
+sudo emerge --ask dev-libs/wayland dev-libs/wayland-protocols x11-libs/cairo net-misc/curl pkgconf
 ```
 
 ### Dependencies
 
-
-**Arch:**
-```bash
-sudo pacman -S wayland cairo libcurl
-```
 
 uses wayland, cairo, libcurl, and custom HTML parsing
 
