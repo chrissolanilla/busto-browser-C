@@ -8,6 +8,13 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <errno.h>
+#include <time.h>
+
+static long long now_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (long long)ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL;
+}
 
 // Simple keycode mapping for US keyboard
 static const char* keymap_simple[256] = {
@@ -358,48 +365,88 @@ static void keyboard_leave(void *data, struct wl_keyboard *keyboard,
     printf("Keyboard left surface\n");
 }
 
+static const char *keycode_to_string(uint32_t key) {
+    if(key <256 && keymap_simple[key] && strcmp(keymap_simple[key], "?") !=0) {
+        return keymap_simple[key];
+    }
+    if (key == 22)  return "BackSpace";
+    if (key == 36)  return "Return";
+    if (key == 111) return "Up";
+    if (key == 116) return "Down";
+    if (key == 113) return "Left";
+    if (key == 114) return "Right";
+    if (key == 23)  return "Tab";
+    if (key == 9)   return "Escape";
+    if (key == 118) return "F5";
+
+    return NULL;
+}
+
 static void keyboard_key(void *data, struct wl_keyboard *keyboard,
                         uint32_t serial, uint32_t time, uint32_t key,
                         uint32_t state) {
     struct busto_window *window = data;
 
-    if (state == WL_KEYBOARD_KEY_STATE_PRESSED && window->key_handler) {
-        const char *key_str = NULL;
+    if(key >= 256) return;
+    if(state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+        window->key_down[key]=1;
+        //
+        const char *key_str = keycode_to_string(key);
 
-        if (key < 256 && keymap_simple[key] && strcmp(keymap_simple[key], "?") != 0) {
-            key_str = keymap_simple[key];
-        } else if (key == 22) {
-            key_str = "BackSpace";
-        } else if (key == 36) {
-            key_str = "Return";
-        } else if (key == 111) {
-            key_str = "Up";
-        } else if (key == 116) {
-            key_str = "Down";
-        } else if (key == 113) {
-            key_str = "Left";
-        } else if (key == 114) {
-            key_str = "Right";
-        } else if (key == 108) {
-            key_str = "Down";
-        } else if (key == 105) {
-            key_str = "Left";
-        } else if (key == 106) {
-            key_str = "Right";
-        } else if (key == 23) {
-            key_str = "Tab";
-        } else if (key == 9) {
-            key_str = "Escape";
-        } else if (key == 118) {
-            key_str = "F5";
-        } else {
-            printf("unknown keycode: %u\n", key);
-            return;
+        if(window->key_handler){
+            window->key_handler(window,key_str, window->key_handler_data);
         }
 
-        printf("Key: %u -> '%s'\n", key, key_str);
-        window->key_handler(window, key_str, window->key_handler_data);
+        if(window->repeat_rate >0) {
+            long long t = now_ms();
+            window->key_next_repeat_ms[key] = t+window->repeat_delay;
+        }
+        else {
+            window->key_next_repeat_ms[key] = 0;
+        }
     }
+    else if(state==WL_KEYBOARD_KEY_STATE_RELEASED) {
+        window->key_down[key] =0;
+        window->key_next_repeat_ms[key]=0;
+    }
+
+    /* if (state == WL_KEYBOARD_KEY_STATE_PRESSED && window->key_handler) { */
+    /*     const char *key_str = NULL; */
+    /**/
+    /*     if (key < 256 && keymap_simple[key] && strcmp(keymap_simple[key], "?") != 0) { */
+    /*         key_str = keymap_simple[key]; */
+    /*     } else if (key == 22) { */
+    /*         key_str = "BackSpace"; */
+    /*     } else if (key == 36) { */
+    /*         key_str = "Return"; */
+    /*     } else if (key == 111) { */
+    /*         key_str = "Up"; */
+    /*     } else if (key == 116) { */
+    /*         key_str = "Down"; */
+    /*     } else if (key == 113) { */
+    /*         key_str = "Left"; */
+    /*     } else if (key == 114) { */
+    /*         key_str = "Right"; */
+    /*     } else if (key == 108) { */
+    /*         key_str = "Down"; */
+    /*     } else if (key == 105) { */
+    /*         key_str = "Left"; */
+    /*     } else if (key == 106) { */
+    /*         key_str = "Right"; */
+    /*     } else if (key == 23) { */
+    /*         key_str = "Tab"; */
+    /*     } else if (key == 9) { */
+    /*         key_str = "Escape"; */
+    /*     } else if (key == 118) { */
+    /*         key_str = "F5"; */
+    /*     } else { */
+    /*         printf("unknown keycode: %u\n", key); */
+    /*         return; */
+    /*     } */
+    /**/
+    /*     printf("Key: %u -> '%s'\n", key, key_str); */
+    /*     window->key_handler(window, key_str, window->key_handler_data); */
+    /* } */
 }
 
 static void keyboard_modifiers(void *data, struct wl_keyboard *keyboard,
@@ -412,6 +459,9 @@ static void keyboard_modifiers(void *data, struct wl_keyboard *keyboard,
 
 static void keyboard_repeat_info(void *data, struct wl_keyboard *keyboard,
                                  int32_t rate, int32_t delay) {
+    struct busto_window *window = data;
+    window->repeat_rate = rate;
+    window->repeat_delay = delay;
     printf("Keyboard repeat: rate=%d, delay=%d\n", rate, delay);
 }
 
@@ -483,6 +533,8 @@ struct busto_window *busto_window_create(int width, int height) {
     window->width = width;
     window->height = height;
     window->running = 1;
+    window->repeat_delay = 600;
+    window->repeat_rate = 25;
 
     window->display = wl_display_connect(NULL);
     if (!window->display) {
@@ -596,5 +648,33 @@ void busto_window_set_key_handler(struct busto_window *window, busto_key_handler
     if (window) {
         window->key_handler = handler;
         window->key_handler_data = data;
+    }
+}
+
+void busto_window_update_repeats(struct busto_window *window) {
+    if(!window || !window->key_handler) return;
+    if(window->repeat_rate <= 0) return;
+    long long t = now_ms();
+    long long interval_ms = 1000LL / window->repeat_rate;
+    if (interval_ms <= 0) interval_ms = 1;
+
+    for (int key = 0; key < 256; key++) {
+        if (!window->key_down[key]) continue;
+
+        long long next = window->key_next_repeat_ms[key];
+        if (next == 0) continue;
+
+        if (t >= next) {
+            const char *key_str = keycode_to_string((uint32_t)key);//not sure what to put
+
+            if(!key_str) continue;
+            window->key_handler(window, key_str, window->key_handler_data);
+
+            window->key_next_repeat_ms[key] = next + interval_ms;
+
+            if (window->key_next_repeat_ms[key] < t - 200) {
+                window->key_next_repeat_ms[key] = t + interval_ms;
+            }
+        }
     }
 }

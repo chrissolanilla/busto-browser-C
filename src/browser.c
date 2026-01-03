@@ -229,6 +229,7 @@ int main(int argc, char *argv[]) {
     // Main loop - just handle Wayland events
     while (busto_window_is_running(g_window)) {
         busto_window_dispatch(g_window);
+        busto_window_update_repeats(g_window);
     }
 
     // Cleanup
