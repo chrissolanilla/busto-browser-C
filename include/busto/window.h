@@ -22,6 +22,11 @@ struct busto_window {
 
     struct wl_seat *seat;
     struct wl_keyboard *keyboard;
+    //for window resizing
+    size_t shm_size;
+    int pending_width;
+    int pending_height;
+    int needs_resize;
 
     cairo_surface_t *cairo_surface;
     cairo_t *cr;

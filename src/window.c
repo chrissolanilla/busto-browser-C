@@ -16,7 +16,7 @@ static long long now_ms(void) {
     return (long long)ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL;
 }
 
-// Simple keycode mapping for US keyboard
+//simple keycode mapping for US keyboard
 static const char* keymap_simple[256] = {
     [0] = "?",
     [1] = "Escape",
@@ -124,9 +124,9 @@ static const char* keymap_simple[256] = {
     [103] = "Up",
     [104] = "?",
     [105] = "Left",
-    [106] = "?",
+    [106] = "Right",
     [107] = "End",
-    [108] = "?",
+    [108] = "Down",
     [109] = "?",
     [110] = "?",
     [111] = "Down",
@@ -297,7 +297,7 @@ static void handle_global(void *data, struct wl_registry *registry,
 
 static void handle_global_remove(void *data, struct wl_registry *registry,
                                  uint32_t name) {
-    // Handle removal if needed
+    //handle removal if needed
 }
 
 static const struct wl_registry_listener registry_listener = {
@@ -314,14 +314,29 @@ static const struct xdg_wm_base_listener xdg_wm_base_listener = {
 static void create_buffer(struct busto_window *window);
 
 
-static void xdg_surface_configure(void *data, struct xdg_surface *xdg_surface,
-                                   uint32_t serial) {
+static void xdg_surface_configure(void *data,
+                                  struct xdg_surface *xdg_surface,
+                                  uint32_t serial) {
     struct busto_window *window = data;
     xdg_surface_ack_configure(xdg_surface, serial);
 
-    //only create the buffer and draw after we configure first
-    if(!window->configured) {
+    if (!window->configured) {
         window->configured = 1;
+
+        //adopt pending size if set
+        if (window->pending_width > 0) window->width = window->pending_width;
+        if (window->pending_height > 0) window->height = window->pending_height;
+
+        create_buffer(window);
+        busto_window_redraw(window);
+        return;
+    }
+
+    if (window->needs_resize) {
+        window->needs_resize = 0;
+
+        window->width = window->pending_width;
+        window->height = window->pending_height;
         create_buffer(window);
     }
 
@@ -332,13 +347,21 @@ static const struct xdg_surface_listener xdg_surface_listener = {
     xdg_surface_configure};
 
 static void xdg_toplevel_configure(void *data,
-                                   struct xdg_toplevel *xdg_toplevel, int32_t w,
-                                   int32_t h, struct wl_array *states) {
+                                   struct xdg_toplevel *xdg_toplevel,
+                                   int32_t w, int32_t h,
+                                   struct wl_array *states) {
     struct busto_window *window = data;
-    if (w > 0)
-        window->width = w;
-    if (h > 0)
-        window->height = h;
+
+    //some compositors send 0,0 to mean "unspecified"
+    if (w > 0 && h > 0) {
+        window->pending_width = w;
+        window->pending_height = h;
+
+        if (window->pending_width != window->width ||
+            window->pending_height != window->height) {
+            window->needs_resize = 1;
+        }
+    }
 }
 
 static void xdg_toplevel_close(void *data, struct xdg_toplevel *xdg_toplevel) {
@@ -391,8 +414,8 @@ static void keyboard_key(void *data, struct wl_keyboard *keyboard,
     if(key >= 256) return;
     if(state == WL_KEYBOARD_KEY_STATE_PRESSED) {
         window->key_down[key]=1;
-        //
         const char *key_str = keycode_to_string(key);
+        //TODO: maybe remove this cause tis a lot
         printf("[key] %s key=%u '%s'\n",
            state == WL_KEYBOARD_KEY_STATE_PRESSED ? "down" : "up",
            key, key_str ? key_str : "(null)");
@@ -414,43 +437,6 @@ static void keyboard_key(void *data, struct wl_keyboard *keyboard,
         window->key_next_repeat_ms[key]=0;
     }
 
-    /* if (state == WL_KEYBOARD_KEY_STATE_PRESSED && window->key_handler) { */
-    /*     const char *key_str = NULL; */
-    /**/
-    /*     if (key < 256 && keymap_simple[key] && strcmp(keymap_simple[key], "?") != 0) { */
-    /*         key_str = keymap_simple[key]; */
-    /*     } else if (key == 22) { */
-    /*         key_str = "BackSpace"; */
-    /*     } else if (key == 36) { */
-    /*         key_str = "Return"; */
-    /*     } else if (key == 111) { */
-    /*         key_str = "Up"; */
-    /*     } else if (key == 116) { */
-    /*         key_str = "Down"; */
-    /*     } else if (key == 113) { */
-    /*         key_str = "Left"; */
-    /*     } else if (key == 114) { */
-    /*         key_str = "Right"; */
-    /*     } else if (key == 108) { */
-    /*         key_str = "Down"; */
-    /*     } else if (key == 105) { */
-    /*         key_str = "Left"; */
-    /*     } else if (key == 106) { */
-    /*         key_str = "Right"; */
-    /*     } else if (key == 23) { */
-    /*         key_str = "Tab"; */
-    /*     } else if (key == 9) { */
-    /*         key_str = "Escape"; */
-    /*     } else if (key == 118) { */
-    /*         key_str = "F5"; */
-    /*     } else { */
-    /*         printf("unknown keycode: %u\n", key); */
-    /*         return; */
-    /*     } */
-    /**/
-    /*     printf("Key: %u -> '%s'\n", key, key_str); */
-    /*     window->key_handler(window, key_str, window->key_handler_data); */
-    /* } */
 }
 
 static void keyboard_modifiers(void *data, struct wl_keyboard *keyboard,
@@ -478,11 +464,28 @@ static const struct wl_keyboard_listener keyboard_listener = {
     keyboard_repeat_info
 };
 
+static void destroy_buffer(struct busto_window *window) {
+    if (window->cr) { cairo_destroy(window->cr); window->cr = NULL; }
+    if (window->cairo_surface) { cairo_surface_destroy(window->cairo_surface); window->cairo_surface = NULL; }
+    if (window->buffer) { wl_buffer_destroy(window->buffer); window->buffer = NULL; }
+
+    if (window->shm_data) {
+        //need to store shm_size in the window
+        munmap(window->shm_data, window->shm_size);
+        window->shm_data = NULL;
+        window->shm_size = 0;
+    }
+}
+
+
 static void create_buffer(struct busto_window *window) {
+    //i got to free memory when we create buffer i thikn?
+    destroy_buffer(window);
     int stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, window->width);
     int size = stride * window->height;
+    window->shm_size = (size_t)size;
 
-    // Create temporary file for shared memory
+    //create temporary file for shared memory
     char shm_name[] = "/tmp/busto-browser-XXXXXX";
     int fd = mkstemp(shm_name);
     fcntl(fd, F_SETFD, FD_CLOEXEC);
@@ -492,13 +495,12 @@ static void create_buffer(struct busto_window *window) {
     }
     unlink(shm_name);
 
-    // Set size
+    //set size
     if (ftruncate(fd, size) < 0) {
         fprintf(stderr, "Failed to truncate file\n");
         exit(1);
     }
 
-    //create shared memory pool
     struct wl_shm_pool *pool = wl_shm_create_pool(window->shm, fd, size);
     if (!pool) {
         fprintf(stderr, "Failed to create SHM pool\n");
@@ -506,7 +508,6 @@ static void create_buffer(struct busto_window *window) {
         exit(1);
     }
 
-    //assign it to window not just no where lmao
     window->buffer = wl_shm_pool_create_buffer(pool, 0, window->width, window->height, stride, WL_SHM_FORMAT_ARGB8888);
     if (!window->buffer) {
         fprintf(stderr, "Failed to create Wayland buffer\n");
@@ -539,6 +540,10 @@ struct busto_window *busto_window_create(int width, int height) {
     window->running = 1;
     window->repeat_delay = 600;
     window->repeat_rate = 25;
+    window->pending_width = width;
+    window->pending_height = height;
+    window->needs_resize = 0;
+
 
     window->display = wl_display_connect(NULL);
     if (!window->display) {
@@ -597,9 +602,14 @@ void busto_window_destroy(struct busto_window *window) {
 
     if (window->keyboard) wl_keyboard_destroy(window->keyboard);
     if (window->seat) wl_seat_destroy(window->seat);
-    if (window->cr) cairo_destroy(window->cr);
-    if (window->cairo_surface) cairo_surface_destroy(window->cairo_surface);
-    if (window->buffer) wl_buffer_destroy(window->buffer);
+
+    //lowkey dont need these
+    /* if (window->cr) cairo_destroy(window->cr); */
+    /* if (window->cairo_surface) cairo_surface_destroy(window->cairo_surface); */
+    /* if (window->buffer) wl_buffer_destroy(window->buffer); */
+
+    destroy_buffer(window);
+
     if (window->xdg_toplevel) xdg_toplevel_destroy(window->xdg_toplevel);
     if (window->xdg_surface) xdg_surface_destroy(window->xdg_surface);
     if (window->surface) wl_surface_destroy(window->surface);

@@ -1,0 +1,19 @@
+# build outputs
+busto-browser
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+
+build/
+dist/
+out/
+bin/
+obj/
+
+*.swp
+*.swo
+*~
+.DS_Store
+

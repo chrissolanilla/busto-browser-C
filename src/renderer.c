@@ -73,13 +73,15 @@ void busto_renderer_render(cairo_t *cr, int width, int height) {
     //draw content area background
     //TODO: make it reactive or fuck it one theme.
     //191, 149, 249
-    cairo_set_source_rgb(cr, 191.0/256.0, 149.0/256.0, 249.0/256.0);
+    //43, 46, 59
+    //cairo_set_source_rgb(cr, 191.0/256.0, 149.0/256.0, 249.0/256.0);
+    cairo_set_source_rgb(cr, 43.0/256.0, 46.0/256.0, 59.0/256.0);
     cairo_rectangle(cr, 10, 60, width - 20, height - 70);
     cairo_fill(cr);
 
     // Draw content
     if (renderer_state.content) {
-        cairo_set_source_rgb(cr, 0.0, 0.0, 0.0);
+        cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
         cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
         cairo_set_font_size(cr, 14.0);
 
