@@ -5,13 +5,37 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Simple renderer state
 static struct {
     char *url;
     char *content;
     int url_input_active;
     int scroll_y;
 } renderer_state = {0};
+
+static double font_for_marker(const char *line, const char **out_text_start) {
+    *out_text_start = line;
+
+    if (strncmp(line, "[[H1]]", 6) == 0) { *out_text_start = line + 6; return 28.0; }
+    if (strncmp(line, "[[H2]]", 6) == 0) { *out_text_start = line + 6; return 22.0; }
+    if (strncmp(line, "[[H3]]", 6) == 0) { *out_text_start = line + 6; return 18.0; }
+    if (strncmp(line, "[[H4]]", 6) == 0) { *out_text_start = line + 6; return 16.0; }
+    if (strncmp(line, "[[H5]]", 6) == 0) { *out_text_start = line + 6; return 15.0; }
+    if (strncmp(line, "[[H6]]", 6) == 0) { *out_text_start = line + 6; return 14.0; }
+    if (strncmp(line, "[[LI]]", 6) == 0) { *out_text_start = line + 6; return 14.0; }
+    if (strncmp(line, "[[P]]", 5)  == 0) { *out_text_start = line + 5; return 14.0; }
+
+    return 14.0;
+}
+
+static void strip_close_markers(char *s) {
+    //remove any trailing close markers
+    const char *markers[] = {"[[/H1]]","[[/H2]]","[[/H3]]","[[/H4]]","[[/H5]]","[[/H6]]","[[/P]]","[[/LI]]",NULL};
+    for (int i = 0; markers[i]; i++) {
+        char *p = strstr(s, markers[i]);
+        if (p) *p = '\0';
+    }
+}
+
 
 void busto_renderer_render(cairo_t *cr, int width, int height) {
     // Clear surface with white background
@@ -37,7 +61,7 @@ void busto_renderer_render(cairo_t *cr, int width, int height) {
     const char *url_display = renderer_state.url ? renderer_state.url : "about:blank";
     cairo_show_text(cr, url_display);
 
-    // Draw cursor if input is active
+    //draw cursor if input is active
     if (renderer_state.url_input_active) {
         cairo_text_extents_t extents;
         cairo_text_extents(cr, url_display, &extents);
@@ -46,8 +70,10 @@ void busto_renderer_render(cairo_t *cr, int width, int height) {
         cairo_stroke(cr);
     }
 
-    // Draw content area background
-    cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+    //draw content area background
+    //TODO: make it reactive or fuck it one theme.
+    //191, 149, 249
+    cairo_set_source_rgb(cr, 191.0/256.0, 149.0/256.0, 249.0/256.0);
     cairo_rectangle(cr, 10, 60, width - 20, height - 70);
     cairo_fill(cr);
 
@@ -64,19 +90,44 @@ void busto_renderer_render(cairo_t *cr, int width, int height) {
 
         while (line && y < height - 20) {
             if (strlen(line) > 0) {
+                // 1) figure out style from marker
+                const char *text_start = NULL;
+                double font_size = font_for_marker(line, &text_start);
+
+                // 2) copy styled text into temp buffer we can edit
+                char temp[1024];
+                snprintf(temp, sizeof(temp), "%s", text_start ? text_start : "");
+
+                // 3) strip closing markers so they don't show up
+                strip_close_markers(temp);
+
+                // 4) optional: LI bullet
+                if (strncmp(line, "[[LI]]", 6) == 0) {
+                    char with_bullet[1024];
+                    snprintf(with_bullet, sizeof(with_bullet), "• %s", temp);
+                    snprintf(temp, sizeof(temp), "%s", with_bullet);
+                }
+
+                // 5) set font size BEFORE measuring/wrapping
+                cairo_set_font_size(cr, font_size);
+
+                // spacing: headings get more vertical room
+                int line_step = (font_size >= 22.0) ? 32 : (font_size >= 18.0 ? 26 : 20);
+
+                // 6) measure + wrap using temp (not the original line)
                 cairo_text_extents_t extents;
-                cairo_text_extents(cr, line, &extents);
-                
+                cairo_text_extents(cr, temp, &extents);
+
                 if (extents.width > max_width) {
-                    char *pos = line;
+                    char *pos = temp;
                     while (*pos && y < height - 20) {
                         char temp_line[512];
                         int char_count = 0;
-                        
-                        while (*pos && char_count < sizeof(temp_line) - 1) {
+
+                        while (*pos && char_count < (int)sizeof(temp_line) - 1) {
                             temp_line[char_count++] = *pos++;
                             temp_line[char_count] = '\0';
-                            
+
                             cairo_text_extents(cr, temp_line, &extents);
                             if (extents.width > max_width) {
                                 if (char_count > 1) {
@@ -87,25 +138,28 @@ void busto_renderer_render(cairo_t *cr, int width, int height) {
                                 break;
                             }
                         }
-                        
+
                         cairo_move_to(cr, 20, y);
                         cairo_show_text(cr, temp_line);
-                        y += 20;
+                        y += line_step;
                     }
                 } else {
                     cairo_move_to(cr, 20, y);
-                    cairo_show_text(cr, line);
-                    y += 20;
+                    cairo_show_text(cr, temp);
+                    y += line_step;
                 }
             } else {
+                // blank line
                 y += 20;
             }
+
             line = strtok(NULL, "\n");
         }
 
+
         free(content_copy);
     } else {
-        // Show default content
+        //defualt controls
         cairo_set_source_rgb(cr, 0.5, 0.5, 0.5);
         cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
         cairo_set_font_size(cr, 18.0);

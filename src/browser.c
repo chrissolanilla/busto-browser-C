@@ -36,7 +36,8 @@ static void* fetch_url_thread(void *arg) {
         if (doc) {
             char text_buffer[8192] = "";
             if (doc->root) {
-                busto_html_extract_text(doc->root, text_buffer, sizeof(text_buffer));
+                //busto_html_extract_text(doc->root, text_buffer, sizeof(text_buffer));
+                busto_html_extract_rich_text(doc->root, text_buffer, sizeof(text_buffer));
             }
 
             // Update renderer with processed content

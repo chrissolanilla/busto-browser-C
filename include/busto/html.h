@@ -20,5 +20,8 @@ struct busto_html_document *busto_html_parse(const char *html);
 void busto_html_document_free(struct busto_html_document *doc);
 void busto_html_render_text(struct busto_html_element *element, int depth);
 void busto_html_extract_text(struct busto_html_element *element, char *buffer, size_t buffer_size);
+void busto_html_extract_rich_text(struct busto_html_element *element,
+                                 char *buffer, size_t buffer_size);
+
 
 #endif
