@@ -538,7 +538,7 @@ struct busto_window *busto_window_create(int width, int height) {
     window->width = width;
     window->height = height;
     window->running = 1;
-    window->repeat_delay = 600;
+    window->repeat_delay = 300;
     window->repeat_rate = 25;
     window->pending_width = width;
     window->pending_height = height;

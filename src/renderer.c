@@ -54,7 +54,9 @@ void busto_renderer_render(cairo_t *cr, int width, int height) {
 
     // Draw URL text
     cairo_set_source_rgb(cr, 0.0, 0.0, 0.0);
-    cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
+    //cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
+    cairo_select_font_face(cr, "ComicShannsMono Nerd Font", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
+
     cairo_set_font_size(cr, 16.0);
     cairo_move_to(cr, 15, 35);
 
@@ -82,7 +84,9 @@ void busto_renderer_render(cairo_t *cr, int width, int height) {
     // Draw content
     if (renderer_state.content) {
         cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
-        cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
+        //cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
+        cairo_select_font_face(cr, "ComicShannsMono Nerd Font", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
+
         cairo_set_font_size(cr, 14.0);
 
         char *content_copy = strdup(renderer_state.content);
@@ -163,7 +167,9 @@ void busto_renderer_render(cairo_t *cr, int width, int height) {
     } else {
         //defualt controls
         cairo_set_source_rgb(cr, 0.5, 0.5, 0.5);
-        cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
+        //cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
+        cairo_select_font_face(cr, "ComicShannsMono Nerd Font", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
+
         cairo_set_font_size(cr, 18.0);
         cairo_move_to(cr, 20, 85);
         cairo_show_text(cr, "Enter a URL to get started");
