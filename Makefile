@@ -3,8 +3,15 @@ CFLAGS = -Wall -Wextra -std=c99 -I include/ -I build/protocol/
 LIBS = -lwayland-client -lcairo -lcurl -lpthread
 TARGET = busto-browser
 
+PROTO_DIR = build/protocol
+PROTO_H   = $(PROTO_DIR)/xdg-shell-client-protocol.h
+PROTO_C   = $(PROTO_DIR)/xdg-shell-client-protocol.c
+PROTO_XML = /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml
+
+
 # Source files
-SOURCES = src/browser.c src/window.c src/renderer.c src/http.c src/html.c src/input.c src/utils.c build/protocol/xdg-shell-client-protocol.c
+# SOURCES = src/browser.c src/window.c src/renderer.c src/http.c src/html.c src/input.c src/utils.c build/protocol/xdg-shell-client-protocol.c
+SOURCES = src/browser.c src/window.c src/renderer.c src/http.c src/html.c src/input.c src/utils.c $(PROTO_C)
 OBJECTS = $(SOURCES:.c=.o)
 
 # Header files for dependency tracking
@@ -12,7 +19,8 @@ HEADERS = include/busto/window.h include/busto/renderer.h include/busto/http.h i
 
 .PHONY: all clean install-deps protocols test
 
-all: $(TARGET)
+# all: $(TARGET)
+all: $(PROTO_H) $(TARGET)
 
 $(TARGET): $(OBJECTS)
 	$(CC) $(OBJECTS) -o $(TARGET) $(LIBS)
@@ -24,9 +32,16 @@ clean:
 	rm -f $(OBJECTS) $(TARGET)
 
 # Generate protocol files (run this if you update wayland protocols)
-protocols:
-	wayland-scanner client-header /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml build/protocol/xdg-shell-client-protocol.h
-	wayland-scanner private-code /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml build/protocol/xdg-shell-client-protocol.c
+# protocols:
+# 	wayland-scanner client-header /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml build/protocol/xdg-shell-client-protocol.h
+# 	wayland-scanner private-code /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml build/protocol/xdg-shell-client-protocol.c
+protocols: $(PROTO_H) $(PROTO_C)
+
+$(PROTO_H) $(PROTO_C):
+	mkdir -p $(PROTO_DIR)
+	wayland-scanner client-header $(PROTO_XML) $(PROTO_H)
+	wayland-scanner private-code  $(PROTO_XML) $(PROTO_C)
+
 
 install-deps:
 	@echo "Installing dependencies..."

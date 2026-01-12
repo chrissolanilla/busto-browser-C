@@ -38,21 +38,21 @@ static void strip_close_markers(char *s) {
 
 
 void busto_renderer_render(cairo_t *cr, int width, int height) {
-    // Clear surface with white background
+    //clear surface with white background
     cairo_set_source_rgb(cr, 0.2, 0.2, 0.2);
     cairo_paint(cr);
 
-    // Draw URL bar background
+    //draw URL bar background
     cairo_set_source_rgb(cr, 0.5, 0.5, 0.5);
     cairo_rectangle(cr, 10, 10, width - 20, 40);
     cairo_fill(cr);
 
-    // Draw URL bar border
+    //draw URL bar border
     cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
     cairo_rectangle(cr, 10, 10, width - 20, 40);
     cairo_stroke(cr);
 
-    // Draw URL text
+    //draw URL text
     cairo_set_source_rgb(cr, 0.0, 0.0, 0.0);
     //cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
     cairo_select_font_face(cr, "ComicShannsMono Nerd Font", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
@@ -81,7 +81,7 @@ void busto_renderer_render(cairo_t *cr, int width, int height) {
     cairo_rectangle(cr, 10, 60, width - 20, height - 70);
     cairo_fill(cr);
 
-    // Draw content
+    //draw content
     if (renderer_state.content) {
         cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
         //cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
@@ -96,31 +96,24 @@ void busto_renderer_render(cairo_t *cr, int width, int height) {
 
         while (line && y < height - 20) {
             if (strlen(line) > 0) {
-                // 1) figure out style from marker
                 const char *text_start = NULL;
                 double font_size = font_for_marker(line, &text_start);
 
-                // 2) copy styled text into temp buffer we can edit
                 char temp[1024];
                 snprintf(temp, sizeof(temp), "%s", text_start ? text_start : "");
 
-                // 3) strip closing markers so they don't show up
                 strip_close_markers(temp);
 
-                // 4) optional: LI bullet
                 if (strncmp(line, "[[LI]]", 6) == 0) {
                     char with_bullet[1024];
                     snprintf(with_bullet, sizeof(with_bullet), "• %s", temp);
                     snprintf(temp, sizeof(temp), "%s", with_bullet);
                 }
 
-                // 5) set font size BEFORE measuring/wrapping
                 cairo_set_font_size(cr, font_size);
 
-                // spacing: headings get more vertical room
                 int line_step = (font_size >= 22.0) ? 32 : (font_size >= 18.0 ? 26 : 20);
 
-                // 6) measure + wrap using temp (not the original line)
                 cairo_text_extents_t extents;
                 cairo_text_extents(cr, temp, &extents);
 
@@ -155,7 +148,7 @@ void busto_renderer_render(cairo_t *cr, int width, int height) {
                     y += line_step;
                 }
             } else {
-                // blank line
+                //blank line
                 y += 20;
             }
 

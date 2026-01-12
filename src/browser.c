@@ -31,7 +31,7 @@ static void* fetch_url_thread(void *arg) {
 
     char *content = busto_http_get(url);
     if (content) {
-        // Simple HTML processing - extract text content
+        //extract text
         struct busto_html_document *doc = busto_html_parse(content);
         if (doc) {
             char text_buffer[8192] = "";
@@ -40,7 +40,6 @@ static void* fetch_url_thread(void *arg) {
                 busto_html_extract_rich_text(doc->root, text_buffer, sizeof(text_buffer));
             }
 
-            // Update renderer with processed content
             busto_renderer_set_content(text_buffer[0] ? text_buffer : content);
 
             if (doc->title) {
@@ -51,7 +50,7 @@ static void* fetch_url_thread(void *arg) {
 
             busto_html_document_free(doc);
         } else {
-            // If parsing fails, show raw content
+            //show raw if fails
             busto_renderer_set_content(content);
         }
 
@@ -62,9 +61,10 @@ static void* fetch_url_thread(void *arg) {
 
     g_fetching = 0;
     busto_renderer_set_input_active(0);
-    busto_input_deactivate(g_input);  // Auto-unfocus after loading
+	//auto unfocus after load
+    busto_input_deactivate(g_input);
 
-    // Force refresh after loading
+    //refresh fter load
     refresh_display();
 
     free(url);
@@ -74,21 +74,18 @@ static void* fetch_url_thread(void *arg) {
 static void load_url(const char *url) {
     if (!url || g_fetching) return;
 
-    // Update current URL
     if (g_current_url) {
         free(g_current_url);
     }
     g_current_url = strdup(url);
 
-    // Update input and renderer
+    //update inputa nd render
     busto_input_set_url(g_input, url);
     busto_renderer_set_url(url);
     busto_renderer_set_content("Loading...");
 
-    // Refresh to show "Loading..." immediately
+    //prob shows loading here
     refresh_display();
-
-    // Start fetch thread
     g_fetching = 1;
     pthread_create(&g_fetch_thread, NULL, fetch_url_thread, strdup(url));
     pthread_detach(g_fetch_thread);
@@ -109,32 +106,30 @@ static void handle_key(struct busto_window *window, const char *key, void *user_
     if (busto_input_is_active(g_input)) {
         busto_input_handle_key(g_input, key);
 
-        // Update renderer with new URL
         busto_renderer_set_url(busto_input_get_url(g_input));
         busto_renderer_set_input_active(1);
 
-        // Check if Enter was pressed
         if (strcmp(key, "Return") == 0) {
             const char *url = busto_input_get_url(g_input);
             if (url && strlen(url) > 0) {
                 load_url(url);
             }
         } else if (strcmp(key, "Escape") == 0) {
-            // Unfocus URL bar with Escape
             printf("Unfocusing URL bar\n");
             busto_input_deactivate(g_input);
             busto_renderer_set_input_active(0);
         }
     } else {
-        // Global key handling when not in input mode
+        //global key handling when not in input mode
+		//TODO: have vim navigation like ctrl+d and u for scrolling, selecting text and all
         if (strcmp(key, "l") == 0) {
             // Activate URL bar
             printf("Activating URL bar\n");
             busto_input_activate(g_input);
             busto_renderer_set_input_active(1);
-            refresh_display();  // Refresh to show cursor
+			//show cursor
+            refresh_display();
         } else if (strcmp(key, "q") == 0) {
-            // Quit
             printf("Quitting...\n");
             busto_window_destroy(window);
             exit(0);
@@ -145,10 +140,8 @@ static void handle_key(struct busto_window *window, const char *key, void *user_
             busto_renderer_scroll(50);
             refresh_display();
         } else if (strcmp(key, "r") == 0 || strcmp(key, "F5") == 0) {
-            // Reload current page
             reload_current_page();
         } else if (strcmp(key, "?") == 0) {
-            // Show help
             busto_renderer_set_content(
                 "BUSTO BROWSER HELP\n\n"
                 "CONTROLS:\n"
@@ -175,25 +168,21 @@ static void handle_key(struct busto_window *window, const char *key, void *user_
         }
     }
 
-    // Always redraw after key handling
+    //always refresh after key press
     refresh_display();
 }
 
-int main(int argc, char *argv[]) {
-    (void)argc; (void)argv;
-
+int main() {
     printf("Starting Busto Browser...\n");
     printf("Window keyboard input is active!\n");
     printf("Press '?' in the window for help.\n\n");
 
-    // Create window
     g_window = busto_window_create(1920, 1080);
     if (!g_window) {
         fprintf(stderr, "Failed to create window\n");
         return 1;
     }
 
-    // Create input handler
     g_input = busto_input_create();
     if (!g_input) {
         fprintf(stderr, "Failed to create input handler\n");
@@ -201,13 +190,11 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // Set up key handler
     busto_window_set_key_handler(g_window, handle_key, NULL);
 
-    // Set window title
     busto_window_set_title(g_window, "Busto Browser - Press '?' for help");
 
-    // Initialize renderer with about:blank
+	//TODO: set default url
     busto_renderer_set_url("about:blank");
     busto_renderer_set_content(
         "Welcome to Busto Browser!\n\n"
@@ -224,13 +211,11 @@ int main(int argc, char *argv[]) {
         "• Press 'r' or F5 to reload current page"
     );
 
-    // Initial draw
+	//do i need this
     refresh_display();
 
-    printf("Browser window is open. Click on it and type keys!\n");
-    printf("If keys don't work, try clicking the window again.\n");
 
-    // Main loop - just handle Wayland events
+    //main loop
     while(busto_window_is_running(g_window)) {
         //framerate tick
         busto_window_update_repeats(g_window);
@@ -239,7 +224,7 @@ int main(int argc, char *argv[]) {
             g_window->needs_redraw = 0;
             busto_window_redraw(g_window);
         }
-        // process any queued events
+        //process any queued events
         wl_display_dispatch_pending(g_window->display);
         while(wl_display_prepare_read(g_window->display) !=0) {
             wl_display_dispatch_pending(g_window->display);
@@ -263,11 +248,9 @@ int main(int argc, char *argv[]) {
             wl_display_cancel_read(g_window->display);
         }
 
-        //busto_window_dispatch(g_window);
-        //busto_window_update_repeats(g_window);
     }
 
-    // Cleanup
+    //get rid of threads
     if (g_fetching) {
         pthread_join(g_fetch_thread, NULL);
     }

@@ -35,7 +35,7 @@ static char* extract_text_between_tags(char** html_ptr) {
     strncpy(text, start, len);
     text[len] = '\0';
 
-    // Trim whitespace
+    //trim whitesace
     char* trimmed = text;
     while (*trimmed && isspace(*trimmed)) trimmed++;
 

@@ -575,7 +575,7 @@ struct busto_window *busto_window_create(int width, int height) {
     xdg_surface_add_listener(window->xdg_surface, &xdg_surface_listener, window);
     xdg_toplevel_add_listener(window->xdg_toplevel, &xdg_toplevel_listener, window);
 
-    // Set up keyboard if seat is available
+    //set up keyboard if seat is available
     if (window->seat) {
         window->keyboard = wl_seat_get_keyboard(window->seat);
         if (!window->keyboard) {

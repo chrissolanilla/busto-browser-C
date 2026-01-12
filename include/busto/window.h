@@ -3,7 +3,7 @@
 
 #include <cairo/cairo.h>
 #include <wayland-client.h>
-#include "../../build/protocol/xdg-shell-client-protocol.h"
+#include "xdg-shell-client-protocol.h"
 
 struct busto_window;
 
