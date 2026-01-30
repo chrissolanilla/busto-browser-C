@@ -122,8 +122,8 @@ static void handle_key(struct busto_window *window, const char *key, void *user_
     } else {
         //global key handling when not in input mode
 		//TODO: have vim navigation like ctrl+d and u for scrolling, selecting text and all
-        if (strcmp(key, "l") == 0) {
-            // Activate URL bar
+        if (strcmp(key, "Ctrl+L") == 0) {
+            //make url bar active
             printf("Activating URL bar\n");
             busto_input_activate(g_input);
             busto_renderer_set_input_active(1);

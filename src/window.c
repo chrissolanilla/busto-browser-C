@@ -60,7 +60,7 @@ static const char* keymap_simple[256] = {
     [39] = ";",
     [40] = "'",
     [41] = "`",
-    [42] = "Left",
+    [42] = "LeftShift",
     [43] = "\\",
     [44] = "z",
     [45] = "x",
@@ -72,7 +72,7 @@ static const char* keymap_simple[256] = {
     [51] = ",",
     [52] = ".",
     [53] = "/",
-    [54] = "Right",
+    [54] = "RightShift",
     [55] = "?",
     [56] = "*",
     [57] = " ",
@@ -388,17 +388,85 @@ static void keyboard_leave(void *data, struct wl_keyboard *keyboard,
     printf("Keyboard left surface\n");
 }
 
-static const char *keycode_to_string(uint32_t key) {
-    if(key <256 && keymap_simple[key] && strcmp(keymap_simple[key], "?") !=0) {
-        return keymap_simple[key];
+static int is_ctrl_down(const struct busto_window *window) {
+    return window->key_down[29] || window->key_down[97]; // LeftCtrl, RightCtrl
+}
+
+static int is_shift_down(const struct busto_window *window) {
+    return window->key_down[42] || window->key_down[54]; // LeftShift, RightShift
+}
+
+static const char *keycode_to_string(struct busto_window *window, uint32_t key) {
+    static char buf[32];
+
+    if (key >= 256) return NULL;
+
+    if (keymap_simple[key] && strcmp(keymap_simple[key], "?") != 0) {
+        const char *base = keymap_simple[key];
+
+        //dont fuck with modifiers in output or else it gets eaten
+        if (strcmp(base, "LeftShift") == 0 || strcmp(base, "RightShift") == 0 ||
+            strcmp(base, "LeftCtrl") == 0  || strcmp(base, "RightCtrl") == 0 ||
+            strcmp(base, "LeftAlt") == 0   || strcmp(base, "RightAlt") == 0) {
+            return NULL;
+        }
+
+        int shift = is_shift_down(window);
+
+        //for 1char keys apply shift map
+        if (strlen(base) == 1) {
+            char c = base[0];
+
+            if (shift) {
+                if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+                else {
+                    switch (c) {
+                        case '1': c = '!'; break;
+                        case '2': c = '@'; break;
+                        case '3': c = '#'; break;
+                        case '4': c = '$'; break;
+                        case '5': c = '%'; break;
+                        case '6': c = '^'; break;
+                        case '7': c = '&'; break;
+                        case '8': c = '*'; break;
+                        case '9': c = '('; break;
+                        case '0': c = ')'; break;
+                        case '-': c = '_'; break;
+                        case '=': c = '+'; break;
+                        case '[': c = '{'; break;
+                        case ']': c = '}'; break;
+                        case ';': c = ':'; break;
+                        case '\'': c = '"'; break;
+                        case '`': c = '~'; break;
+                        case '\\': c = '|'; break;
+                        case ',': c = '<'; break;
+                        case '.': c = '>'; break;
+                        case '/': c = '?'; break;
+                        default: break;
+                    }
+                }
+            }
+
+            //for ctrl+key combos
+            if (is_ctrl_down(window) && ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) {
+                snprintf(buf, sizeof(buf), "Ctrl+%c",
+                         (c >= 'a' && c <= 'z') ? (char)(c - 'a' + 'A') : c);
+                return buf;
+            }
+
+            buf[0] = c;
+            buf[1] = '\0';
+            return buf;
+        }
+
+        return base;
     }
-    //if (key == 22)  return "BackSpace";
+
     if (key == 36)  return "Return";
     if (key == 111) return "Up";
     if (key == 116) return "Down";
     if (key == 113) return "Left";
     if (key == 114) return "Right";
-    if (key == 23)  return "Tab";
     if (key == 9)   return "Escape";
     if (key == 118) return "F5";
 
@@ -414,7 +482,8 @@ static void keyboard_key(void *data, struct wl_keyboard *keyboard,
     if(key >= 256) return;
     if(state == WL_KEYBOARD_KEY_STATE_PRESSED) {
         window->key_down[key]=1;
-        const char *key_str = keycode_to_string(key);
+        /* const char *key_str = keycode_to_string(key); */
+		const char *key_str = keycode_to_string(window, key);
         //TODO: maybe remove this cause tis a lot
         printf("[key] %s key=%u '%s'\n",
            state == WL_KEYBOARD_KEY_STATE_PRESSED ? "down" : "up",
@@ -683,7 +752,8 @@ void busto_window_update_repeats(struct busto_window *window) {
         if (next == 0) continue;
 
         if (t >= next) {
-            const char *key_str = keycode_to_string((uint32_t)key);//not sure what to put
+            /* const char *key_str = keycode_to_string((uint32_t)key);//not sure what to put */
+			const char *key_str = keycode_to_string(window, key);
             if(!key_str) continue;
             printf("[repeat] key=%d '%s'\n", key, key_str);
 
