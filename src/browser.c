@@ -107,6 +107,7 @@ static void handle_key(struct busto_window *window, const char *key, void *user_
 
     if (busto_input_is_active(g_input)) {
         busto_input_handle_key(g_input, key);
+        busto_renderer_set_cursor_pos(g_input->cursor_pos);
 
         busto_renderer_set_url(busto_input_get_url(g_input));
         busto_renderer_set_input_active(1);
@@ -121,6 +122,11 @@ static void handle_key(struct busto_window *window, const char *key, void *user_
             busto_input_deactivate(g_input);
             busto_renderer_set_input_active(0);
         }
+        printf("url='%s' len=%zu cursor=%zu\n",
+           busto_input_get_url(g_input),
+           strlen(busto_input_get_url(g_input)),
+           g_input->cursor_pos);
+
         //this dosent render the cursor over white space... cursor dosent move when going left or right.
         /* refresh_display(); */
     } else {

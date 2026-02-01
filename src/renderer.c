@@ -10,6 +10,7 @@ static struct {
     char *content;
     int url_input_active;
     int scroll_y;
+    size_t url_cursor_pos;
 } renderer_state = {0};
 
 static double font_for_marker(const char *line, const char **out_text_start) {
@@ -65,10 +66,26 @@ void busto_renderer_render(cairo_t *cr, int width, int height) {
 
     //draw cursor if input is active
     if (renderer_state.url_input_active) {
+        const char *url_text = url_display;
+        size_t url_len = strlen(url_text);
+        size_t cursor_pos = renderer_state.url_cursor_pos;
+        if(cursor_pos > url_len){
+            cursor_pos = url_len;
+        }
+        char url_prefix[1024];
+        if(cursor_pos >= sizeof(url_prefix)){
+            cursor_pos = sizeof(url_prefix) -1;
+        }
+        memcpy(url_prefix, url_text, cursor_pos);
+        url_prefix[cursor_pos] = '\0';
+
         cairo_text_extents_t extents;
-        cairo_text_extents(cr, url_display, &extents);
-        cairo_move_to(cr, 15 + extents.width + 2, 35);
-        cairo_line_to(cr, 15 + extents.width + 2, 25);
+        cairo_text_extents(cr, url_prefix, &extents);
+        double x = 15 + extents.x_advance + 2;
+        cairo_move_to(cr, x, 35);
+        cairo_line_to(cr, x, 25);
+        /* cairo_move_to(cr, 15 + extents.width + 2, 35); */
+        /* cairo_line_to(cr, 15 + extents.width + 2, 25); */
         cairo_stroke(cr);
     }
 
@@ -204,3 +221,8 @@ void busto_renderer_free(void) {
         renderer_state.content = NULL;
     }
 }
+
+void busto_renderer_set_cursor_pos(size_t pos) {
+    renderer_state.url_cursor_pos = pos;
+}
+
