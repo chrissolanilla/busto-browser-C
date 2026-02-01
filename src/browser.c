@@ -25,6 +25,12 @@ static void refresh_display(void) {
     busto_window_request_redraw(g_window);
 }
 
+static void sync_urlbar_to_renderer(void) {
+    busto_renderer_set_url(busto_input_get_url(g_input));
+    busto_renderer_set_cursor_pos(g_input->cursor_pos);
+    busto_renderer_set_input_active(busto_input_is_active(g_input));
+}
+
 static void* fetch_url_thread(void *arg) {
     char *url = (char*)arg;
 
@@ -64,6 +70,7 @@ static void* fetch_url_thread(void *arg) {
     busto_renderer_set_input_active(0);
 	//auto unfocus after load
     busto_input_deactivate(g_input);
+    sync_urlbar_to_renderer();
 
     //refresh fter load
     refresh_display();
@@ -82,6 +89,7 @@ static void load_url(const char *url) {
 
     //update inputa nd render
     busto_input_set_url(g_input, url);
+    sync_urlbar_to_renderer();
     busto_renderer_set_url(url);
     busto_renderer_set_content("Loading...");
 
@@ -107,6 +115,7 @@ static void handle_key(struct busto_window *window, const char *key, void *user_
 
     if (busto_input_is_active(g_input)) {
         busto_input_handle_key(g_input, key);
+        sync_urlbar_to_renderer();
         busto_renderer_set_cursor_pos(g_input->cursor_pos);
 
         busto_renderer_set_url(busto_input_get_url(g_input));
@@ -136,6 +145,8 @@ static void handle_key(struct busto_window *window, const char *key, void *user_
             //make url bar active
             printf("Activating URL bar\n");
             busto_input_activate(g_input);
+            sync_urlbar_to_renderer();
+            busto_renderer_set_cursor_pos(g_input->cursor_pos);
             busto_renderer_set_input_active(1);
 			//show cursor
             refresh_display();
@@ -182,6 +193,8 @@ static void handle_key(struct busto_window *window, const char *key, void *user_
     refresh_display();
     snprintf(lastKey, sizeof(lastKey), "%s", key);
 }
+
+
 
 int main() {
     printf("Starting Busto Browser...\n");
