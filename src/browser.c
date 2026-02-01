@@ -17,6 +17,7 @@ static struct busto_window *g_window = NULL;
 static char *g_current_url = NULL;
 static pthread_t g_fetch_thread;
 static int g_fetching = 0;
+static char lastKey[64] = {0};
 
 static void refresh_display(void) {
     //printf("Refreshing display...\n");
@@ -102,6 +103,7 @@ static void handle_key(struct busto_window *window, const char *key, void *user_
     if (!key) return;
 
     printf("Key received: '%s'\n", key);
+    printf("LastKey received: '%s'\n", lastKey);
 
     if (busto_input_is_active(g_input)) {
         busto_input_handle_key(g_input, key);
@@ -119,6 +121,8 @@ static void handle_key(struct busto_window *window, const char *key, void *user_
             busto_input_deactivate(g_input);
             busto_renderer_set_input_active(0);
         }
+        //this dosent render the cursor over white space... cursor dosent move when going left or right.
+        /* refresh_display(); */
     } else {
         //global key handling when not in input mode
 		//TODO: have vim navigation like ctrl+d and u for scrolling, selecting text and all
@@ -129,7 +133,7 @@ static void handle_key(struct busto_window *window, const char *key, void *user_
             busto_renderer_set_input_active(1);
 			//show cursor
             refresh_display();
-        } else if (strcmp(key, "q") == 0) {
+        } else if (strcmp(key, "q") == 0 && strcmp(lastKey, ":") == 0) {
             printf("Quitting...\n");
             busto_window_destroy(window);
             exit(0);
@@ -170,6 +174,7 @@ static void handle_key(struct busto_window *window, const char *key, void *user_
 
     //always refresh after key press
     refresh_display();
+    snprintf(lastKey, sizeof(lastKey), "%s", key);
 }
 
 int main() {
