@@ -337,6 +337,20 @@ static int is_blockish_tag(const char *tag) {
             strcmp(tag, "br") == 0);
 }
 
+static void tb_append(struct busto_text_buffer *tb, const char *s) {
+    if (!tb || !tb->data || !s || tb->cap == 0) return;
+
+    size_t slen = strlen(s);
+    if (tb->len >= tb->cap - 1) return;
+
+    size_t avail = tb->cap - tb->len - 1;
+    if (slen > avail) slen = avail;
+
+    memcpy(tb->data + tb->len, s, slen);
+    tb->len += slen;
+    tb->data[tb->len] = '\0';
+}
+
 void busto_html_extract_rich_text(struct busto_html_element *element,
                                  char *buffer, size_t buffer_size) {
     if (!element || !buffer || buffer_size == 0) return;
@@ -373,3 +387,35 @@ void busto_html_extract_rich_text(struct busto_html_element *element,
     }
 }
 
+void busto_html_extract_rich_text_fast(struct busto_html_element *element,
+                                       struct busto_text_buffer *tb) {
+    if (!element || !tb) return;
+
+    if (element->text && element->tag && strcmp(element->tag, "#text") == 0) {
+        tb_append(tb, element->text);
+        return;
+    }
+
+    const char *open = style_open_marker(element->tag);
+    const char *close = style_close_marker(element->tag);
+
+    if (open) tb_append(tb, open);
+
+    if (is_tag(element, "br")) {
+        tb_append(tb, "\n");
+    }
+
+    struct busto_html_element *child = element->children;
+    while (child) {
+        busto_html_extract_rich_text_fast(child, tb);
+        child = child->next;
+    }
+
+    if (close) tb_append(tb, close);
+
+    if (is_blockish_tag(element->tag)) {
+        if (tb->len > 0 && tb->data[tb->len - 1] != '\n') {
+            tb_append(tb, "\n");
+        }
+    }
+}
