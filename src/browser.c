@@ -38,16 +38,27 @@ static void* fetch_url_thread(void *arg) {
 
     char *content = busto_http_get(url);
     if (content) {
-        //extract text
         struct busto_html_document *doc = busto_html_parse(content);
         if (doc) {
-            char text_buffer[8192] = "";
-            if (doc->root) {
-                //busto_html_extract_text(doc->root, text_buffer, sizeof(text_buffer));
-                busto_html_extract_rich_text(doc->root, text_buffer, sizeof(text_buffer));
+            size_t text_cap = 64 * 1024 * 1024; // 64 MB
+            char *text_buffer = calloc(1, text_cap);
+
+            if (text_buffer && doc->root) {
+                /* busto_html_extract_rich_text(doc->root, text_buffer, text_cap); */
+				struct busto_text_buffer tb = {
+					.data = text_buffer,
+					.len = 0,
+					.cap = text_cap
+				};
+				busto_html_extract_rich_text_fast(doc->root, &tb);
             }
 
-            busto_renderer_set_content(text_buffer[0] ? text_buffer : content);
+            busto_renderer_set_content(
+                (text_buffer && text_buffer[0]) ? text_buffer : content
+            );
+
+            printf("extracted text len = %zu\n",
+                   text_buffer ? strlen(text_buffer) : 0UL);
 
             if (doc->title) {
                 char title[256];
@@ -55,9 +66,9 @@ static void* fetch_url_thread(void *arg) {
                 busto_window_set_title(g_window, title);
             }
 
+            free(text_buffer);
             busto_html_document_free(doc);
         } else {
-            //show raw if fails
             busto_renderer_set_content(content);
         }
 
@@ -68,16 +79,14 @@ static void* fetch_url_thread(void *arg) {
 
     g_fetching = 0;
     busto_renderer_set_input_active(0);
-	//auto unfocus after load
     busto_input_deactivate(g_input);
     sync_urlbar_to_renderer();
-
-    //refresh fter load
     refresh_display();
 
     free(url);
     return NULL;
 }
+
 
 static void load_url(const char *url) {
     if (!url || g_fetching) return;

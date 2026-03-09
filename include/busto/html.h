@@ -10,6 +10,12 @@ struct busto_html_element {
     struct busto_html_element *next;
 };
 
+struct busto_text_buffer {
+	char *data;
+	size_t len;
+	size_t cap;
+};
+
 struct busto_html_document {
     struct busto_html_element *root;
     char *title;
@@ -23,5 +29,7 @@ void busto_html_extract_text(struct busto_html_element *element, char *buffer, s
 void busto_html_extract_rich_text(struct busto_html_element *element,
                                  char *buffer, size_t buffer_size);
 
+void busto_html_extract_rich_text_fast(struct busto_html_element *element,
+                                       struct busto_text_buffer *tb);
 
 #endif
