@@ -256,10 +256,10 @@ static void handle_key(struct busto_window *window, const char *key, void *user_
             printf("Quitting...\n");
             busto_window_destroy(window);
             exit(0);
-        } else if (strcmp(key, "Up") == 0) {
+        } else if (strcmp(key, "Up") == 0 || strcmp(key, "k") == 0) {
             busto_renderer_scroll(-50);
             refresh_display();
-        } else if (strcmp(key, "Down") == 0) {
+        } else if (strcmp(key, "Down") == 0 || strcmp(key, "j") ==0 ) {
             busto_renderer_scroll(50);
             refresh_display();
         } else if (strcmp(key, "r") == 0 || strcmp(key, "F5") == 0) {
