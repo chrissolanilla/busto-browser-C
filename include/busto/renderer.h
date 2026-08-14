@@ -12,5 +12,11 @@ void busto_renderer_scroll(int delta);
 void busto_renderer_free(void);
 void busto_renderer_set_cursor_pos(size_t pos);
 
+enum busto_content_mode {
+    BUSTO_CONTENT_RICH,
+    BUSTO_CONTENT_PLAIN
+};
+void busto_renderer_set_content_mode(enum busto_content_mode mode);
+
 
 #endif

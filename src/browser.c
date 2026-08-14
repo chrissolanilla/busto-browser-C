@@ -19,6 +19,26 @@ static pthread_t g_fetch_thread;
 static int g_fetching = 0;
 static char lastKey[64] = {0};
 
+/* enum busto_content_mode { */
+/*     BUSTO_CONTENT_RICH, */
+/*     BUSTO_CONTENT_PLAIN */
+/* }; */
+
+/* void busto_renderer_set_content_mode(enum busto_content_mode mode) { */
+/*     renderer_state.content_mode = mode; */
+/* } */
+
+struct fetch_result {
+    char *content;
+    char *title;
+    enum busto_content_mode mode;
+    int ready;
+};
+
+static struct fetch_result g_pending_result = {0};
+
+static pthread_mutex_t g_fetch_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 static void refresh_display(void) {
     //printf("Refreshing display...\n");
     //busto_window_redraw(g_window);
@@ -76,72 +96,88 @@ static char *read_local_file(const char *url)
     return buffer;
 }
 
-static void* fetch_url_thread(void *arg) {
-    char *url = (char*)arg;
+static void *fetch_url_thread(void *arg)
+{
+    char *url = arg;
+
+    char *result_content = NULL;
+    char *result_title = NULL;
+    enum busto_content_mode result_mode = BUSTO_CONTENT_PLAIN;
 
     printf("Fetching URL: %s\n", url);
-    if(url[0] == '~') {
-        char * content = read_local_file(url);
-        if(content) {
-            busto_renderer_set_content(content);
-            free(content);
-        }
-        else {
-            busto_renderer_set_content("Failed to open local file");
+
+    if (url[0] == '~') {
+        result_content = read_local_file(url);
+        result_mode = BUSTO_CONTENT_PLAIN;
+
+        if (!result_content) {
+            result_content = strdup("Failed to open local file");
         }
     }
-    //if not a local file then do a web search
     else {
         char *content = busto_http_get(url);
+
         if (content) {
             struct busto_html_document *doc = busto_html_parse(content);
+
             if (doc) {
-                size_t text_cap = 64 * 1024 * 1024; // 64 MB
+                size_t text_cap = 64 * 1024 * 1024;
                 char *text_buffer = calloc(1, text_cap);
 
                 if (text_buffer && doc->root) {
-                    /* busto_html_extract_rich_text(doc->root, text_buffer, text_cap); */
                     struct busto_text_buffer tb = {
                         .data = text_buffer,
                         .len = 0,
                         .cap = text_cap
                     };
+
                     busto_html_extract_rich_text_fast(doc->root, &tb);
                 }
 
-                busto_renderer_set_content(
-                        (text_buffer && text_buffer[0]) ? text_buffer : content
-                        );
-
-                printf("extracted text len = %zu\n",
-                        text_buffer ? strlen(text_buffer) : 0UL);
+                if (text_buffer && text_buffer[0]) {
+                    result_content = strdup(text_buffer);
+                    result_mode = BUSTO_CONTENT_RICH;
+                }
+                else {
+                    result_content = strdup(content);
+                    result_mode = BUSTO_CONTENT_PLAIN;
+                }
 
                 if (doc->title) {
-                    char title[256];
-                    snprintf(title, sizeof(title), "Busto Browser - %s", doc->title);
-                    busto_window_set_title(g_window, title);
+                    result_title = strdup(doc->title);
                 }
 
                 free(text_buffer);
                 busto_html_document_free(doc);
-            } else {
-                busto_renderer_set_content(content);
+            }
+            else {
+                result_content = strdup(content);
+                result_mode = BUSTO_CONTENT_PLAIN;
             }
 
             busto_http_cleanup(content);
-        } else {
-            busto_renderer_set_content("Failed to load page");
         }
-
-
+        else {
+            result_content = strdup("Failed to load page");
+            result_mode = BUSTO_CONTENT_PLAIN;
+        }
     }
-    //clean regardless of path
-    g_fetching = 0;
-    busto_renderer_set_input_active(0);
-    busto_input_deactivate(g_input);
-    sync_urlbar_to_renderer();
-    refresh_display();
+
+    //prevent datarace with the ONLY shared-state interaction from the worker.
+    pthread_mutex_lock(&g_fetch_mutex);
+
+    free(g_pending_result.content);
+    free(g_pending_result.title);
+
+    g_pending_result.content = result_content;
+    g_pending_result.title = result_title;
+    g_pending_result.mode = result_mode;
+    g_pending_result.ready = 1;
+
+    pthread_mutex_unlock(&g_fetch_mutex);
+
     free(url);
+
     return NULL;
 }
 
@@ -260,7 +296,58 @@ static void handle_key(struct busto_window *window, const char *key, void *user_
     snprintf(lastKey, sizeof(lastKey), "%s", key);
 }
 
+static void process_fetch_result(void)
+{
+    char *content = NULL;
+    char *title = NULL;
+    enum busto_content_mode mode;
 
+    pthread_mutex_lock(&g_fetch_mutex);
+
+    if (!g_pending_result.ready) {
+        pthread_mutex_unlock(&g_fetch_mutex);
+        return;
+    }
+
+    //move ownership out of pending result.
+    content = g_pending_result.content;
+    title = g_pending_result.title;
+    mode = g_pending_result.mode;
+
+    g_pending_result.content = NULL;
+    g_pending_result.title = NULL;
+    g_pending_result.ready = 0;
+
+    g_fetching = 0;
+
+    pthread_mutex_unlock(&g_fetch_mutex);
+
+    //this all runs on wayland main thread
+    busto_renderer_set_content_mode(mode);
+    busto_renderer_set_content(content);
+
+    if (title) {
+        char window_title[256];
+
+        snprintf(
+            window_title,
+            sizeof(window_title),
+            "Busto Browser - %s",
+            title
+        );
+
+        busto_window_set_title(g_window, window_title);
+    }
+
+    busto_input_deactivate(g_input);
+    busto_renderer_set_input_active(0);
+    sync_urlbar_to_renderer();
+
+    refresh_display();
+
+    free(content);
+    free(title);
+}
 
 int main() {
     printf("Starting Busto Browser...\n");
@@ -307,6 +394,7 @@ int main() {
 
     //main loop
     while(busto_window_is_running(g_window)) {
+        process_fetch_result();
         //framerate tick
         busto_window_update_repeats(g_window);
         //if something happens, redraw also

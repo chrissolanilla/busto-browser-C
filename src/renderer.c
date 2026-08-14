@@ -9,9 +9,15 @@ static struct {
     char *url;
     char *content;
     int url_input_active;
+     enum busto_content_mode content_mode;
     int scroll_y;
     size_t url_cursor_pos;
 } renderer_state = {0};
+
+void busto_renderer_set_content_mode(enum busto_content_mode mode)
+{
+    renderer_state.content_mode = mode;
+}
 
 static double font_for_marker(const char *line, const char **out_text_start) {
     *out_text_start = line;
@@ -37,9 +43,210 @@ static void strip_close_markers(char *s) {
     }
 }
 
+static char *expand_tabs(const char *line, size_t tab_width)
+{
+    if (!line || tab_width == 0)
+        return NULL;
+
+    size_t len = strlen(line);
+
+    //worst case every char is a tab and needs tab space
+    char *result = malloc(len * tab_width + 1);
+    if (!result)
+        return NULL;
+
+    size_t out = 0;
+    size_t column = 0;
+
+    for (size_t i = 0; line[i]; i++) {
+
+        if (line[i] == '\t') {
+            size_t spaces =
+                tab_width - (column % tab_width);
+
+            for (size_t j = 0; j < spaces; j++) {
+                result[out++] = ' ';
+                column++;
+            }
+        }
+        else {
+            result[out++] = line[i];
+            column++;
+        }
+    }
+
+    result[out] = '\0';
+    return result;
+}
+
+static void render_plain_content(
+    cairo_t *cr,
+    const char *content,
+    int width,
+    int height
+)
+{
+    if (!content)
+        return;
+
+    char *copy = strdup(content);
+    if (!copy)
+        return;
+
+    char *remaining = copy;
+    char *line;
+
+    int y = 85 - renderer_state.scroll_y;
+
+    cairo_set_font_size(cr, 14.0);
+
+    while ((line = strsep(&remaining, "\n")) != NULL) {
+
+        if (y >= 60 && y < height - 20) {
+            char *expanded = expand_tabs(line, 4);
+
+            if (expanded) {
+                cairo_move_to(cr, 20, y);
+                cairo_show_text(cr, expanded);
+                free(expanded);
+            }
+        }
+
+        /*
+         * ALWAYS advance, including empty lines.
+         */
+        y += 20;
+
+        if (y >= height)
+            break;
+    }
+
+    free(copy);
+}
+
+static void render_rich_content(
+    cairo_t *cr,
+    const char *content,
+    int width,
+    int height
+)
+{
+    if (!content)
+        return;
+
+    char *content_copy = strdup(content);
+    if (!content_copy)
+        return;
+
+    char *line = strtok(content_copy, "\n");
+
+    int y = 85 - renderer_state.scroll_y;
+    int max_width = width - 40;
+
+    while (line && y < height - 20) {
+
+        if (strlen(line) > 0) {
+            const char *text_start = NULL;
+
+            double font_size =
+                font_for_marker(line, &text_start);
+
+            char temp[1024];
+
+            snprintf(
+                temp,
+                sizeof(temp),
+                "%s",
+                text_start ? text_start : ""
+            );
+
+            strip_close_markers(temp);
+
+            if (strncmp(line, "[[LI]]", 6) == 0) {
+                char with_bullet[1024];
+
+                snprintf(
+                    with_bullet,
+                    sizeof(with_bullet),
+                    "• %s",
+                    temp
+                );
+
+                snprintf(
+                    temp,
+                    sizeof(temp),
+                    "%s",
+                    with_bullet
+                );
+            }
+
+            cairo_set_font_size(cr, font_size);
+
+            int line_step =
+                (font_size >= 22.0)
+                    ? 32
+                    : (font_size >= 18.0 ? 26 : 20);
+
+            cairo_text_extents_t extents;
+            cairo_text_extents(cr, temp, &extents);
+
+            if (extents.width > max_width) {
+                char *pos = temp;
+
+                while (*pos && y < height - 20) {
+                    char temp_line[512];
+                    int char_count = 0;
+
+                    while (
+                        *pos &&
+                        char_count < (int)sizeof(temp_line) - 1
+                    ) {
+                        temp_line[char_count++] = *pos++;
+                        temp_line[char_count] = '\0';
+
+                        cairo_text_extents(
+                            cr,
+                            temp_line,
+                            &extents
+                        );
+
+                        if (extents.width > max_width) {
+                            if (char_count > 1) {
+                                pos--;
+                                char_count--;
+                                temp_line[char_count] = '\0';
+                            }
+
+                            break;
+                        }
+                    }
+
+                    cairo_move_to(cr, 20, y);
+                    cairo_show_text(cr, temp_line);
+
+                    y += line_step;
+                }
+            }
+            else {
+                cairo_move_to(cr, 20, y);
+                cairo_show_text(cr, temp);
+
+                y += line_step;
+            }
+        }
+        else {
+            y += 20;
+        }
+
+        line = strtok(NULL, "\n");
+    }
+
+    free(content_copy);
+}
 
 void busto_renderer_render(cairo_t *cr, int width, int height) {
     //clear surface with white background
+    //also the window bg
     cairo_set_source_rgb(cr, 0.2, 0.2, 0.2);
     cairo_paint(cr);
 
@@ -106,74 +313,22 @@ void busto_renderer_render(cairo_t *cr, int width, int height) {
 
         cairo_set_font_size(cr, 14.0);
 
-        char *content_copy = strdup(renderer_state.content);
-        char *line = strtok(content_copy, "\n");
-        int y = 85 - renderer_state.scroll_y;
-        int max_width = width - 40;
-
-        while (line && y < height - 20) {
-            if (strlen(line) > 0) {
-                const char *text_start = NULL;
-                double font_size = font_for_marker(line, &text_start);
-
-                char temp[1024];
-                snprintf(temp, sizeof(temp), "%s", text_start ? text_start : "");
-
-                strip_close_markers(temp);
-
-                if (strncmp(line, "[[LI]]", 6) == 0) {
-                    char with_bullet[1024];
-                    snprintf(with_bullet, sizeof(with_bullet), "• %s", temp);
-                    snprintf(temp, sizeof(temp), "%s", with_bullet);
-                }
-
-                cairo_set_font_size(cr, font_size);
-
-                int line_step = (font_size >= 22.0) ? 32 : (font_size >= 18.0 ? 26 : 20);
-
-                cairo_text_extents_t extents;
-                cairo_text_extents(cr, temp, &extents);
-
-                if (extents.width > max_width) {
-                    char *pos = temp;
-                    while (*pos && y < height - 20) {
-                        char temp_line[512];
-                        int char_count = 0;
-
-                        while (*pos && char_count < (int)sizeof(temp_line) - 1) {
-                            temp_line[char_count++] = *pos++;
-                            temp_line[char_count] = '\0';
-
-                            cairo_text_extents(cr, temp_line, &extents);
-                            if (extents.width > max_width) {
-                                if (char_count > 1) {
-                                    pos--;
-                                    char_count--;
-                                    temp_line[char_count] = '\0';
-                                }
-                                break;
-                            }
-                        }
-
-                        cairo_move_to(cr, 20, y);
-                        cairo_show_text(cr, temp_line);
-                        y += line_step;
-                    }
-                } else {
-                    cairo_move_to(cr, 20, y);
-                    cairo_show_text(cr, temp);
-                    y += line_step;
-                }
-            } else {
-                //blank line
-                y += 20;
-            }
-
-            line = strtok(NULL, "\n");
+        if (renderer_state.content_mode == BUSTO_CONTENT_PLAIN) {
+            render_plain_content(
+                cr,
+                renderer_state.content,
+                width,
+                height
+            );
+        } else {
+            render_rich_content(
+                cr,
+                renderer_state.content,
+                width,
+                height
+            );
         }
 
-
-        free(content_copy);
     } else {
         //defualt controls
         cairo_set_source_rgb(cr, 0.5, 0.5, 0.5);
