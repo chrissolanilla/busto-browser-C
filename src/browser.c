@@ -31,62 +31,119 @@ static void sync_urlbar_to_renderer(void) {
     busto_renderer_set_input_active(busto_input_is_active(g_input));
 }
 
+static char *read_local_file(const char *url)
+{
+    if (!url || url[0] != '~') {
+        return NULL;
+    }
+    const char *home = getenv("HOME");
+    if (!home) {
+        fprintf(stderr, "HOME is not set\n");
+        return NULL;
+    }
+    //lib.c can not really read ~ paths so make them /home
+    size_t path_len = strlen(home) + strlen(url);
+    char *path = malloc(path_len + 1);
+    if (!path) {
+        return NULL;
+    }
+    snprintf(path, path_len + 1, "%s%s", home, url + 1);
+    printf("Opening local file: %s\n", path);
+    FILE *file = fopen(path, "rb");
+    free(path);
+    if (!file) {
+        perror("fopen");
+        return NULL;
+    }
+    if (fseek(file, 0, SEEK_END) != 0) {
+        fclose(file);
+        return NULL;
+    }
+    long file_size = ftell(file);
+    if (file_size < 0) {
+        fclose(file);
+        return NULL;
+    }
+    rewind(file);
+    char *buffer = malloc((size_t)file_size + 1);
+    if (!buffer) {
+        fclose(file);
+        return NULL;
+    }
+    size_t bytes_read = fread(buffer, 1, (size_t)file_size, file);
+    buffer[bytes_read] = '\0';
+    fclose(file);
+    return buffer;
+}
+
 static void* fetch_url_thread(void *arg) {
     char *url = (char*)arg;
 
     printf("Fetching URL: %s\n", url);
-
-    char *content = busto_http_get(url);
-    if (content) {
-        struct busto_html_document *doc = busto_html_parse(content);
-        if (doc) {
-            size_t text_cap = 64 * 1024 * 1024; // 64 MB
-            char *text_buffer = calloc(1, text_cap);
-
-            if (text_buffer && doc->root) {
-                /* busto_html_extract_rich_text(doc->root, text_buffer, text_cap); */
-				struct busto_text_buffer tb = {
-					.data = text_buffer,
-					.len = 0,
-					.cap = text_cap
-				};
-				busto_html_extract_rich_text_fast(doc->root, &tb);
-            }
-
-            busto_renderer_set_content(
-                (text_buffer && text_buffer[0]) ? text_buffer : content
-            );
-
-            printf("extracted text len = %zu\n",
-                   text_buffer ? strlen(text_buffer) : 0UL);
-
-            if (doc->title) {
-                char title[256];
-                snprintf(title, sizeof(title), "Busto Browser - %s", doc->title);
-                busto_window_set_title(g_window, title);
-            }
-
-            free(text_buffer);
-            busto_html_document_free(doc);
-        } else {
+    if(url[0] == '~') {
+        char * content = read_local_file(url);
+        if(content) {
             busto_renderer_set_content(content);
+            free(content);
+        }
+        else {
+            busto_renderer_set_content("Failed to open local file");
+        }
+    }
+    //if not a local file then do a web search
+    else {
+        char *content = busto_http_get(url);
+        if (content) {
+            struct busto_html_document *doc = busto_html_parse(content);
+            if (doc) {
+                size_t text_cap = 64 * 1024 * 1024; // 64 MB
+                char *text_buffer = calloc(1, text_cap);
+
+                if (text_buffer && doc->root) {
+                    /* busto_html_extract_rich_text(doc->root, text_buffer, text_cap); */
+                    struct busto_text_buffer tb = {
+                        .data = text_buffer,
+                        .len = 0,
+                        .cap = text_cap
+                    };
+                    busto_html_extract_rich_text_fast(doc->root, &tb);
+                }
+
+                busto_renderer_set_content(
+                        (text_buffer && text_buffer[0]) ? text_buffer : content
+                        );
+
+                printf("extracted text len = %zu\n",
+                        text_buffer ? strlen(text_buffer) : 0UL);
+
+                if (doc->title) {
+                    char title[256];
+                    snprintf(title, sizeof(title), "Busto Browser - %s", doc->title);
+                    busto_window_set_title(g_window, title);
+                }
+
+                free(text_buffer);
+                busto_html_document_free(doc);
+            } else {
+                busto_renderer_set_content(content);
+            }
+
+            busto_http_cleanup(content);
+        } else {
+            busto_renderer_set_content("Failed to load page");
         }
 
-        busto_http_cleanup(content);
-    } else {
-        busto_renderer_set_content("Failed to load page");
-    }
 
+    }
+    //clean regardless of path
     g_fetching = 0;
     busto_renderer_set_input_active(0);
     busto_input_deactivate(g_input);
     sync_urlbar_to_renderer();
     refresh_display();
-
     free(url);
     return NULL;
 }
-
 
 static void load_url(const char *url) {
     if (!url || g_fetching) return;
