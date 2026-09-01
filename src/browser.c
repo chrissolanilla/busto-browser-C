@@ -9,7 +9,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
-#include <poll.h>
 #include <unistd.h>
 
 static struct busto_input *g_input = NULL;
@@ -212,6 +211,7 @@ static void reload_current_page(void) {
 static void handle_key(struct busto_window *window, const char *key, void *user_data) {
     if (!key) return;
 
+    (void)user_data;
     printf("Key received: '%s'\n", key);
     printf("LastKey received: '%s'\n", lastKey);
 
@@ -228,19 +228,23 @@ static void handle_key(struct busto_window *window, const char *key, void *user_
             if (url && strlen(url) > 0) {
                 load_url(url);
             }
-        } else if (strcmp(key, "Escape") == 0) {
+        }
+
+		else if (strcmp(key, "Escape") == 0) {
             printf("Unfocusing URL bar\n");
             busto_input_deactivate(g_input);
             busto_renderer_set_input_active(0);
         }
-        printf("url='%s' len=%zu cursor=%zu\n",
+
+        printf("url='%s' len=%zu cursor=%d\n",
            busto_input_get_url(g_input),
            strlen(busto_input_get_url(g_input)),
            g_input->cursor_pos);
 
         //this dosent render the cursor over white space... cursor dosent move when going left or right.
         /* refresh_display(); */
-    } else {
+    }
+	else {
         //global key handling when not in input mode
 		//TODO: have vim navigation like ctrl+d and u for scrolling, selecting text and all
         if (strcmp(key, "Ctrl+L") == 0) {
@@ -252,26 +256,36 @@ static void handle_key(struct busto_window *window, const char *key, void *user_
             busto_renderer_set_input_active(1);
 			//show cursor
             refresh_display();
-        } else if (strcmp(key, "q") == 0 && strcmp(lastKey, ":") == 0) {
+        }
+
+		else if (strcmp(key, "q") == 0 && strcmp(lastKey, ":") == 0) {
             printf("Quitting...\n");
             busto_window_destroy(window);
             exit(0);
-        } else if (strcmp(key, "Up") == 0 || strcmp(key, "k") == 0) {
+        }
+
+		else if (strcmp(key, "Up") == 0 || strcmp(key, "k") == 0) {
             busto_renderer_scroll(-50);
             refresh_display();
-        } else if (strcmp(key, "Down") == 0 || strcmp(key, "j") ==0 ) {
+        }
+
+		else if (strcmp(key, "Down") == 0 || strcmp(key, "j") ==0 ) {
             busto_renderer_scroll(50);
             refresh_display();
-        } else if (strcmp(key, "r") == 0 || strcmp(key, "F5") == 0) {
+        }
+
+		else if (strcmp(key, "r") == 0 || strcmp(key, "F5") == 0) {
             reload_current_page();
-        } else if (strcmp(key, "?") == 0) {
+        }
+
+		else if (strcmp(key, "?") == 0) {
             busto_renderer_set_content(
                 "BUSTO BROWSER HELP\n\n"
                 "CONTROLS:\n"
                 "  l           - Focus URL bar\n"
                 "  q           - Quit browser\n"
                 "  r / F5      - Reload current page\n"
-                "  Up/Down     - Scroll content\n"
+                "  j/k Up/Down - Scroll content\n"
                 "  ?           - Show this help\n"
                 "\n"
                 "URL BAR (when focused):\n"
@@ -322,9 +336,11 @@ static void process_fetch_result(void)
 
     pthread_mutex_unlock(&g_fetch_mutex);
 
-    //this all runs on wayland main thread
+    //this all runs on the main thread
     busto_renderer_set_content_mode(mode);
     busto_renderer_set_content(content);
+
+    printf("Page loaded, title='%s'\n", title ? title : "(none)");
 
     if (title) {
         char window_title[256];
@@ -374,18 +390,12 @@ int main() {
 	//TODO: set default url
     busto_renderer_set_url("about:blank");
     busto_renderer_set_content(
-        "Welcome to Busto Browser!\n\n"
-        "Type in the window:\n"
+        "Busto Browser!\n\n"
         "  ? - Show help\n"
         "  l - Focus URL bar\n"
         "  r - Reload page\n"
-        "  q - Quit\n"
-        "  Up/Down - Scroll\n\n"
-        "Click this window and type keys!\n\n"
-        "NEW FEATURES:\n"
-        "• Auto-refresh after loading pages\n"
-        "• Press Escape to unfocus URL bar\n"
-        "• Press 'r' or F5 to reload current page"
+        "  :q - Quit\n"
+        "  j/k Up/Down - Scroll\n\n"
     );
 
 	//do i need this
@@ -397,35 +407,12 @@ int main() {
         process_fetch_result();
         //framerate tick
         busto_window_update_repeats(g_window);
+        //wait for events or timeout
+        busto_window_poll(g_window, 16);
         //if something happens, redraw also
-        if(g_window->needs_redraw){
-            g_window->needs_redraw = 0;
+        if(busto_window_needs_redraw(g_window)){
             busto_window_redraw(g_window);
         }
-        //process any queued events
-        wl_display_dispatch_pending(g_window->display);
-        while(wl_display_prepare_read(g_window->display) !=0) {
-            wl_display_dispatch_pending(g_window->display);
-        }
-        wl_display_flush(g_window->display);
-
-        //wait a bit or until wayland got some info
-        int fd = wl_display_get_fd(g_window->display);
-
-        struct pollfd pfd = {
-            .fd = fd,
-            .events = POLLIN
-        };
-        //16 ms , but could use 8 for snappeir
-        int ret = poll(&pfd, 1, 16);
-        if(ret >0 && (pfd.revents & POLLIN)) {
-            wl_display_read_events(g_window->display);
-            wl_display_dispatch_pending(g_window->display);
-        }
-        else {
-            wl_display_cancel_read(g_window->display);
-        }
-
     }
 
     //get rid of threads
