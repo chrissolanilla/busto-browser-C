@@ -20,7 +20,7 @@ else
     PROTO_H   = $(PROTO_DIR)/xdg-shell-client-protocol.h
     PROTO_C   = $(PROTO_DIR)/xdg-shell-client-protocol.c
     PROTO_XML = /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml
-    CFLAGS = -Wall -Wextra -std=c99 -I include/ -I $(PROTO_DIR) -I$(CAIRO_INCDIR) $(shell $(PKG_CONFIG) --cflags cairo libcurl wayland-client 2>/dev/null)
+    CFLAGS = -Wall -Wextra -std=c99 -D_POSIX_C_SOURCE=200809L -I include/ -I $(PROTO_DIR) -I$(CAIRO_INCDIR) $(shell $(PKG_CONFIG) --cflags cairo libcurl wayland-client 2>/dev/null)
     PLATFORM_SRC = platform/wayland/window_wayland.c $(PROTO_C)
     LIBS = $(shell $(PKG_CONFIG) --libs cairo libcurl wayland-client 2>/dev/null) -lpthread
 endif
@@ -56,10 +56,16 @@ protocols:
 else
 protocols: $(PROTO_H) $(PROTO_C)
 
-$(PROTO_H) $(PROTO_C):
+$(PROTO_H): $(PROTO_XML)
 	mkdir -p $(PROTO_DIR)
 	wayland-scanner client-header $(PROTO_XML) $(PROTO_H)
-	wayland-scanner private-code  $(PROTO_XML) $(PROTO_C)
+
+$(PROTO_C): $(PROTO_XML)
+	mkdir -p $(PROTO_DIR)
+	wayland-scanner private-code $(PROTO_XML) $(PROTO_C)
+
+platform/wayland/window_wayland.o: $(PROTO_H)
+
 endif
 
 install-deps:

@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <poll.h>
+#include "xdg-shell-client-protocol.h"
 
 struct busto_window {
     struct wl_display *display;
