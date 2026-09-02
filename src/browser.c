@@ -337,6 +337,11 @@ static void handle_key(struct busto_window *window, const char *key, void *user_
     printf("LastKey received: '%s'\n", lastKey);
 
     if (busto_input_is_active(g_input)) {
+        if (strcmp(key, "Ctrl+V") == 0) {
+            busto_window_request_paste(window);
+            return;
+        }
+
         busto_input_handle_key(g_input, key);
         sync_urlbar_to_renderer();
         busto_renderer_set_cursor_pos(g_input->cursor_pos);
@@ -429,6 +434,22 @@ static void handle_key(struct busto_window *window, const char *key, void *user_
     //always refresh after key press
     refresh_display();
     snprintf(lastKey, sizeof(lastKey), "%s", key);
+}
+
+static void handle_paste(struct busto_window *window, const char *text, void *user_data) {
+    (void)window;
+    (void)user_data;
+
+    if (!busto_input_is_active(g_input)) {
+        return;
+    }
+
+    busto_input_insert_text(g_input, text);
+    sync_urlbar_to_renderer();
+    busto_renderer_set_cursor_pos(g_input->cursor_pos);
+    busto_renderer_set_url(busto_input_get_url(g_input));
+    busto_renderer_set_input_active(1);
+    refresh_display();
 }
 
 static void process_fetch_result(void)
@@ -524,6 +545,7 @@ int main() {
     }
 
     busto_window_set_key_handler(g_window, handle_key, NULL);
+    busto_window_set_paste_handler(g_window, handle_paste, NULL);
 
     busto_window_set_title(g_window, "Busto Browser - Press '?' for help");
 

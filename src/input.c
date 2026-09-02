@@ -83,6 +83,35 @@ void busto_input_add_char(struct busto_input *input, char c) {
     input->url_changed = 1;
 }
 
+void busto_input_insert_text(struct busto_input *input, const char *text) {
+    if (!input || !input->active || !text) {
+        return;
+    }
+
+    size_t url_len = strlen(input->url);
+    size_t text_len = strlen(text);
+    size_t available = (MAX_URL_LENGTH - 1) - url_len;
+
+    if (text_len == 0 || available == 0) {
+        return;
+    }
+
+    if ((size_t)input->cursor_pos > url_len) {
+        input->cursor_pos = url_len;
+    }
+
+    if (text_len > available) {
+        text_len = available;
+    }
+
+    memmove(&input->url[input->cursor_pos + text_len],
+            &input->url[input->cursor_pos],
+            url_len - input->cursor_pos + 1);
+    memcpy(&input->url[input->cursor_pos], text, text_len);
+    input->cursor_pos += text_len;
+    input->url_changed = 1;
+}
+
 void busto_input_handle_key(struct busto_input *input, const char *key) {
     if (!input || !input->active || !key) return;
 

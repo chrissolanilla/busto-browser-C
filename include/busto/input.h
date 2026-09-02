@@ -20,5 +20,6 @@ void busto_input_deactivate(struct busto_input *input);
 int busto_input_is_active(struct busto_input *input);
 void busto_input_backspace(struct busto_input *input);
 void busto_input_add_char(struct busto_input *input, char c);
+void busto_input_insert_text(struct busto_input *input, const char *text);
 
 #endif

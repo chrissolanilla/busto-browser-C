@@ -3,6 +3,7 @@
 #include "../../include/busto/window.h"
 #include "../../include/busto/renderer.h"
 #include "../../include/busto/key_repeat.h"
+#include "../../include/busto/input.h"
 #include <wayland-client.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -12,7 +13,14 @@
 #include <unistd.h>
 #include <errno.h>
 #include <poll.h>
+#include <stdbool.h>
 #include "xdg-shell-client-protocol.h"
+
+struct busto_data_offer {
+    struct wl_data_offer *offer;
+    char *mime_type;
+    int mime_score;
+};
 
 struct busto_window {
     struct wl_display *display;
@@ -27,6 +35,12 @@ struct busto_window {
 
     struct wl_seat *seat;
     struct wl_keyboard *keyboard;
+    struct wl_data_device_manager *data_device_manager;
+    struct wl_data_device *data_device;
+    struct busto_data_offer *clipboard_offer;
+    int paste_read_fd;
+    char paste_buffer[MAX_URL_LENGTH];
+    size_t paste_len;
 
     size_t shm_size;
     int pending_width;
@@ -47,6 +61,8 @@ struct busto_window {
 
     busto_key_handler_t key_handler;
     void *key_handler_data;
+    busto_paste_handler_t paste_handler;
+    void *paste_handler_data;
 
     struct busto_repeat_state repeat;
 };
@@ -161,6 +177,144 @@ static const char* keymap_simple[256] = {
     [237] = "Right",
 };
 
+static int paste_mime_score(const char *mime_type) {
+    if (!mime_type) {
+        return 0;
+    }
+
+    if (strcmp(mime_type, "text/plain;charset=utf-8") == 0) {
+        return 4;
+    }
+
+    if (strcmp(mime_type, "text/plain") == 0) {
+        return 3;
+    }
+
+    if (strcmp(mime_type, "UTF8_STRING") == 0) {
+        return 2;
+    }
+
+    if (strcmp(mime_type, "STRING") == 0) {
+        return 1;
+    }
+
+    return 0;
+}
+
+static void data_offer_offer(void *data, struct wl_data_offer *offer, const char *mime_type) {
+    (void)offer;
+    struct busto_data_offer *data_offer = data;
+    int score = paste_mime_score(mime_type);
+
+    if (score > data_offer->mime_score) {
+        free(data_offer->mime_type);
+        data_offer->mime_type = strdup(mime_type);
+        data_offer->mime_score = score;
+    }
+}
+
+static void data_offer_source_actions(void *data, struct wl_data_offer *offer, uint32_t source_actions) {
+    (void)data;
+    (void)offer;
+    (void)source_actions;
+}
+
+static void data_offer_action(void *data, struct wl_data_offer *offer, uint32_t dnd_action) {
+    (void)data;
+    (void)offer;
+    (void)dnd_action;
+}
+
+static const struct wl_data_offer_listener data_offer_listener = {
+    data_offer_offer,
+    data_offer_source_actions,
+    data_offer_action
+};
+
+static void destroy_data_offer(struct busto_data_offer *data_offer) {
+    if (!data_offer) {
+        return;
+    }
+
+    free(data_offer->mime_type);
+
+    if (data_offer->offer) {
+        wl_data_offer_destroy(data_offer->offer);
+    }
+
+    free(data_offer);
+}
+
+static void data_device_data_offer(void *data, struct wl_data_device *data_device, struct wl_data_offer *offer) {
+    (void)data;
+    (void)data_device;
+
+    struct busto_data_offer *data_offer = calloc(1, sizeof(struct busto_data_offer));
+    if (!data_offer) {
+        wl_data_offer_destroy(offer);
+        return;
+    }
+
+    data_offer->offer = offer;
+    wl_data_offer_add_listener(offer, &data_offer_listener, data_offer);
+}
+
+static void data_device_enter(void *data, struct wl_data_device *data_device, uint32_t serial,
+                              struct wl_surface *surface, wl_fixed_t x, wl_fixed_t y,
+                              struct wl_data_offer *offer) {
+    (void)data;
+    (void)data_device;
+    (void)serial;
+    (void)surface;
+    (void)x;
+    (void)y;
+    (void)offer;
+}
+
+static void data_device_leave(void *data, struct wl_data_device *data_device) {
+    (void)data;
+    (void)data_device;
+}
+
+static void data_device_motion(void *data, struct wl_data_device *data_device, uint32_t time,
+                               wl_fixed_t x, wl_fixed_t y) {
+    (void)data;
+    (void)data_device;
+    (void)time;
+    (void)x;
+    (void)y;
+}
+
+static void data_device_drop(void *data, struct wl_data_device *data_device) {
+    (void)data;
+    (void)data_device;
+}
+
+static void data_device_selection(void *data, struct wl_data_device *data_device, struct wl_data_offer *offer) {
+    (void)data_device;
+    struct busto_window *window = data;
+    struct busto_data_offer *data_offer = NULL;
+
+    if (offer) {
+        data_offer = wl_data_offer_get_user_data(offer);
+    }
+
+    if (window->clipboard_offer && window->clipboard_offer != data_offer) {
+        destroy_data_offer(window->clipboard_offer);
+    }
+
+    window->clipboard_offer = data_offer;
+}
+
+static const struct wl_data_device_listener data_device_listener = {
+    data_device_data_offer,
+    data_device_enter,
+    data_device_leave,
+    data_device_motion,
+    data_device_drop,
+    data_device_selection
+};
+
 static void handle_global(void *data, struct wl_registry *registry,
                           uint32_t name, const char *interface,
                           uint32_t version) {
@@ -170,14 +324,21 @@ static void handle_global(void *data, struct wl_registry *registry,
     if (strcmp(interface, "wl_compositor") == 0) {
         window->compositor =
             wl_registry_bind(registry, name, &wl_compositor_interface, 1);
-    } else if (strcmp(interface, "wl_shm") == 0) {
+    }
+    else if (strcmp(interface, "wl_shm") == 0) {
         window->shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
-    } else if (strcmp(interface, "xdg_wm_base") == 0) {
+    }
+    else if (strcmp(interface, "xdg_wm_base") == 0) {
         window->xdg_wm_base =
             wl_registry_bind(registry, name, &xdg_wm_base_interface, 1);
-    } else if (strcmp(interface, "wl_seat") == 0) {
+    }
+    else if (strcmp(interface, "wl_seat") == 0) {
         window->seat =
             wl_registry_bind(registry, name, &wl_seat_interface, 1);
+    }
+    else if (strcmp(interface, "wl_data_device_manager") == 0) {
+        window->data_device_manager =
+            wl_registry_bind(registry, name, &wl_data_device_manager_interface, 3);
     }
 }
 
@@ -411,7 +572,10 @@ static void keyboard_key(void *data, struct wl_keyboard *keyboard,
             window->key_handler(window,key_str, window->key_handler_data);
         }
 
-        if(window->repeat.rate >0) {
+        if(key_str && strncmp(key_str, "Ctrl+", 5) == 0) {
+            window->repeat.key_next_repeat_ms[key] = 0;
+        }
+        else if(window->repeat.rate >0) {
             long long t = busto_now_ms();
             window->repeat.key_next_repeat_ms[key] = t+window->repeat.delay;
         }
@@ -543,6 +707,7 @@ struct busto_window *busto_window_create(int width, int height) {
     window->pending_width = width;
     window->pending_height = height;
     window->needs_resize = 0;
+    window->paste_read_fd = -1;
 
 
     window->display = wl_display_connect(NULL);
@@ -583,6 +748,13 @@ struct busto_window *busto_window_create(int width, int height) {
         } else {
             wl_keyboard_add_listener(window->keyboard, &keyboard_listener, window);
         }
+
+        if (window->data_device_manager) {
+            window->data_device = wl_data_device_manager_get_data_device(
+                window->data_device_manager,
+                window->seat);
+            wl_data_device_add_listener(window->data_device, &data_device_listener, window);
+        }
     } else {
         printf("No seat interface available - no keyboard input\n");
     }
@@ -598,10 +770,31 @@ struct busto_window *busto_window_create(int width, int height) {
 }
 
 void busto_window_destroy(struct busto_window *window) {
-    if (!window) return;
+    if (!window) {
+        return;
+    }
 
-    if (window->keyboard) wl_keyboard_destroy(window->keyboard);
-    if (window->seat) wl_seat_destroy(window->seat);
+    if (window->paste_read_fd >= 0) {
+        close(window->paste_read_fd);
+    }
+
+    if (window->clipboard_offer) {
+        destroy_data_offer(window->clipboard_offer);
+    }
+
+    if (window->data_device) {
+        wl_data_device_destroy(window->data_device);
+    }
+
+    if (window->data_device_manager) {
+        wl_data_device_manager_destroy(window->data_device_manager);
+    }
+    if (window->keyboard) {
+        wl_keyboard_destroy(window->keyboard);
+    }
+    if (window->seat) {
+        wl_seat_destroy(window->seat);
+    }
 
     destroy_buffer(window);
 
@@ -649,6 +842,59 @@ int busto_window_is_running(struct busto_window *window) {
     return window ? window->running : 0;
 }
 
+static void finish_paste_read(struct busto_window *window) {
+    if (window->paste_read_fd >= 0) {
+        close(window->paste_read_fd);
+        window->paste_read_fd = -1;
+    }
+
+    window->paste_buffer[window->paste_len] = '\0';
+
+    if (window->paste_handler && window->paste_len > 0) {
+        window->paste_handler(window, window->paste_buffer, window->paste_handler_data);
+    }
+
+    window->paste_len = 0;
+}
+
+static void process_paste_read(struct busto_window *window) {
+    if (!window || window->paste_read_fd < 0) {
+        return;
+    }
+
+    while (true) {
+        char buffer[256];
+        ssize_t bytes_read = read(window->paste_read_fd, buffer, sizeof(buffer));
+
+        if (bytes_read > 0) {
+            size_t available = (MAX_URL_LENGTH - 1) - window->paste_len;
+            size_t copy_len = (size_t)bytes_read;
+
+            if (copy_len > available) {
+                copy_len = available;
+            }
+
+            if (copy_len > 0) {
+                memcpy(&window->paste_buffer[window->paste_len], buffer, copy_len);
+                window->paste_len += copy_len;
+            }
+        }
+        else if (bytes_read == 0) {
+            finish_paste_read(window);
+            return;
+        }
+        else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return;
+        }
+        else {
+            close(window->paste_read_fd);
+            window->paste_read_fd = -1;
+            window->paste_len = 0;
+            return;
+        }
+    }
+}
+
 void busto_window_dispatch(struct busto_window *window) {
     if (!window) {
         return;
@@ -673,18 +919,29 @@ void busto_window_poll(struct busto_window *window, int timeout_ms) {
 
     int fd = wl_display_get_fd(window->display);
 
-    struct pollfd pfd = {
+    struct pollfd pfd[2] = {
+        {
         .fd = fd,
         .events = POLLIN
+        },
+        {
+        .fd = window->paste_read_fd,
+        .events = POLLIN
+        }
     };
+    nfds_t nfds = window->paste_read_fd >= 0 ? 2 : 1;
 
-    int ret = poll(&pfd, 1, timeout_ms);
-    if (ret > 0 && (pfd.revents & POLLIN)) {
+    int ret = poll(pfd, nfds, timeout_ms);
+    if (ret > 0 && (pfd[0].revents & POLLIN)) {
         wl_display_read_events(window->display);
         wl_display_dispatch_pending(window->display);
     }
     else {
         wl_display_cancel_read(window->display);
+    }
+
+    if (ret > 0 && nfds > 1 && (pfd[1].revents & (POLLIN | POLLHUP | POLLERR))) {
+        process_paste_read(window);
     }
 }
 
@@ -708,6 +965,40 @@ void busto_window_set_key_handler(struct busto_window *window, busto_key_handler
         window->key_handler = handler;
         window->key_handler_data = data;
     }
+}
+
+void busto_window_set_paste_handler(struct busto_window *window, busto_paste_handler_t handler, void *data) {
+    if (window) {
+        window->paste_handler = handler;
+        window->paste_handler_data = data;
+    }
+}
+
+void busto_window_request_paste(struct busto_window *window) {
+    if (!window || !window->clipboard_offer || !window->clipboard_offer->mime_type) {
+        return;
+    }
+
+    int fds[2];
+    if (pipe(fds) < 0) {
+        perror("pipe");
+        return;
+    }
+
+    int flags = fcntl(fds[0], F_GETFL, 0);
+    if (flags >= 0) {
+        fcntl(fds[0], F_SETFL, flags | O_NONBLOCK);
+    }
+
+    if (window->paste_read_fd >= 0) {
+        close(window->paste_read_fd);
+    }
+
+    window->paste_read_fd = fds[0];
+    window->paste_len = 0;
+    wl_data_offer_receive(window->clipboard_offer->offer, window->clipboard_offer->mime_type, fds[1]);
+    close(fds[1]);
+    wl_display_flush(window->display);
 }
 
 void busto_window_request_redraw(struct busto_window *window) {
