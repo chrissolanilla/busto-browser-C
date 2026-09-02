@@ -1,3 +1,4 @@
+#include <wayland-client-protocol.h>
 #define _GNU_SOURCE
 #include "../../include/busto/window.h"
 #include "../../include/busto/renderer.h"
@@ -163,6 +164,7 @@ static const char* keymap_simple[256] = {
 static void handle_global(void *data, struct wl_registry *registry,
                           uint32_t name, const char *interface,
                           uint32_t version) {
+    (void)version;
     struct busto_window *window = data;
 
     if (strcmp(interface, "wl_compositor") == 0) {
@@ -182,6 +184,9 @@ static void handle_global(void *data, struct wl_registry *registry,
 static void handle_global_remove(void *data, struct wl_registry *registry,
                                  uint32_t name) {
     //handle removal if needed
+    (void)data;
+    (void)registry;
+    (void)name;
 }
 
 static const struct wl_registry_listener registry_listener = {
@@ -189,6 +194,7 @@ static const struct wl_registry_listener registry_listener = {
 
 static void xdg_wm_base_ping(void *data, struct xdg_wm_base *xdg_wm_base,
                              uint32_t serial) {
+    (void)data;
     xdg_wm_base_pong(xdg_wm_base, serial);
 }
 
@@ -208,8 +214,13 @@ static void xdg_surface_configure(void *data,
         window->configured = 1;
 
         //adopt pending size if set
-        if (window->pending_width > 0) window->width = window->pending_width;
-        if (window->pending_height > 0) window->height = window->pending_height;
+        if (window->pending_width > 0) {
+            window->width = window->pending_width;
+        }
+
+        if (window->pending_height > 0) {
+            window->height = window->pending_height;
+        }
 
         create_buffer(window);
         busto_window_redraw(window);
@@ -234,9 +245,10 @@ static void xdg_toplevel_configure(void *data,
                                    struct xdg_toplevel *xdg_toplevel,
                                    int32_t w, int32_t h,
                                    struct wl_array *states) {
+    (void)states;
+    (void)xdg_toplevel;
     struct busto_window *window = data;
-
-    //some compositors send 0,0 to mean "unspecified"
+    //some compositors send 0,0 to mean unspecified
     if (w > 0 && h > 0) {
         window->pending_width = w;
         window->pending_height = h;
@@ -249,6 +261,7 @@ static void xdg_toplevel_configure(void *data,
 }
 
 static void xdg_toplevel_close(void *data, struct xdg_toplevel *xdg_toplevel) {
+    (void)xdg_toplevel;
     struct busto_window *window = data;
     window->running = 0;
 }
@@ -258,17 +271,36 @@ static const struct xdg_toplevel_listener xdg_toplevel_listener = {
 
 static void keyboard_keymap(void *data, struct wl_keyboard *keyboard,
                            uint32_t format, int fd, uint32_t size) {
+    //only a print here for this funciton huh
+    (void)keyboard;
+    (void)format;
+    (void)data;
+    (void)fd;
+    (void)size;
+
     printf("Keyboard keymap received\n");
+    close(fd);
 }
 
 static void keyboard_enter(void *data, struct wl_keyboard *keyboard,
                           uint32_t serial, struct wl_surface *surface,
                           struct wl_array *keys) {
+    //only a print here for this funciton huh
+    (void)data;
+    (void)keyboard;
+    (void)serial;
+    (void)surface;
+    (void)keys;
     printf("Keyboard entered surface\n");
 }
 
 static void keyboard_leave(void *data, struct wl_keyboard *keyboard,
                           uint32_t serial, struct wl_surface *surface) {
+    //only a print here for this funciton huh
+    (void)data;
+    (void)keyboard;
+    (void)serial;
+    (void)surface;
     printf("Keyboard left surface\n");
 }
 
@@ -360,10 +392,13 @@ static const char *keycode_to_string(struct busto_window *window, int key) {
 static void keyboard_key(void *data, struct wl_keyboard *keyboard,
                         uint32_t serial, uint32_t time, uint32_t key,
                         uint32_t state) {
+    (void)serial;
+    (void)time;
+    (void)keyboard;
     struct busto_window *window = data;
-
-
-    if(key >= 256) return;
+    if(key >= 256) {
+        return;
+    }
     if(state == WL_KEYBOARD_KEY_STATE_PRESSED) {
         window->repeat.key_down[key]=1;
         const char *key_str = keycode_to_string(window, key);
@@ -395,12 +430,16 @@ static void keyboard_modifiers(void *data, struct wl_keyboard *keyboard,
                               uint32_t serial, uint32_t mods_depressed,
                               uint32_t mods_latched, uint32_t mods_locked,
                               uint32_t group) {
+    (void)serial;
+    (void)keyboard;
+    (void)data;
     printf("Modifiers: depressed=%u, latched=%u, locked=%u, group=%u\n",
            mods_depressed, mods_latched, mods_locked, group);
 }
 
 static void keyboard_repeat_info(void *data, struct wl_keyboard *keyboard,
                                  int32_t rate, int32_t delay) {
+    (void)keyboard;
     struct busto_window *window = data;
     window->repeat.rate = rate;
     window->repeat.delay = delay;
@@ -417,9 +456,16 @@ static const struct wl_keyboard_listener keyboard_listener = {
 };
 
 static void destroy_buffer(struct busto_window *window) {
-    if (window->cr) { cairo_destroy(window->cr); window->cr = NULL; }
-    if (window->cairo_surface) { cairo_surface_destroy(window->cairo_surface); window->cairo_surface = NULL; }
-    if (window->buffer) { wl_buffer_destroy(window->buffer); window->buffer = NULL; }
+    if (window->cr) {
+        cairo_destroy(window->cr); window->cr = NULL;
+    }
+
+    if (window->cairo_surface) {
+        cairo_surface_destroy(window->cairo_surface); window->cairo_surface = NULL;
+    }
+    if (window->buffer) {
+        wl_buffer_destroy(window->buffer); window->buffer = NULL;
+    }
 
     if (window->shm_data) {
         //need to store shm_size in the window
@@ -485,7 +531,9 @@ static void create_buffer(struct busto_window *window) {
 
 struct busto_window *busto_window_create(int width, int height) {
     struct busto_window *window = calloc(1, sizeof(struct busto_window));
-    if (!window) return NULL;
+    if (!window) {
+        return NULL;
+    }
 
     window->width = width;
     window->height = height;
@@ -557,14 +605,36 @@ void busto_window_destroy(struct busto_window *window) {
 
     destroy_buffer(window);
 
-    if (window->xdg_toplevel) xdg_toplevel_destroy(window->xdg_toplevel);
-    if (window->xdg_surface) xdg_surface_destroy(window->xdg_surface);
-    if (window->surface) wl_surface_destroy(window->surface);
-    if (window->xdg_wm_base) xdg_wm_base_destroy(window->xdg_wm_base);
-    if (window->shm) wl_shm_destroy(window->shm);
-    if (window->compositor) wl_compositor_destroy(window->compositor);
-    if (window->registry) wl_registry_destroy(window->registry);
-    if (window->display) wl_display_disconnect(window->display);
+    if (window->xdg_toplevel) {
+        xdg_toplevel_destroy(window->xdg_toplevel);
+    }
+
+    if (window->xdg_surface) {
+        xdg_surface_destroy(window->xdg_surface);
+    }
+
+    if (window->surface) {
+        wl_surface_destroy(window->surface);
+    }
+
+    if (window->xdg_wm_base) {
+        xdg_wm_base_destroy(window->xdg_wm_base);
+    }
+    if (window->shm) {
+        wl_shm_destroy(window->shm);
+    }
+
+    if (window->compositor) {
+        wl_compositor_destroy(window->compositor);
+    }
+
+    if (window->registry) {
+        wl_registry_destroy(window->registry);
+    }
+
+    if (window->display) {
+        wl_display_disconnect(window->display);
+    }
 
     free(window);
 }
@@ -580,7 +650,9 @@ int busto_window_is_running(struct busto_window *window) {
 }
 
 void busto_window_dispatch(struct busto_window *window) {
-    if (!window) return;
+    if (!window) {
+        return;
+    }
     int rc = wl_display_dispatch(window->display);
     if(rc < 0) {
         fprintf(stderr, "wl_display_dispatch failed : %s\n", strerror(errno));
@@ -589,7 +661,9 @@ void busto_window_dispatch(struct busto_window *window) {
 }
 
 void busto_window_poll(struct busto_window *window, int timeout_ms) {
-    if (!window) return;
+    if (!window) {
+        return;
+    }
 
     wl_display_dispatch_pending(window->display);
     while (wl_display_prepare_read(window->display) != 0) {
@@ -619,7 +693,9 @@ void busto_window_redraw(struct busto_window *window) {
         fprintf(stderr, "Invalid window in redraw\n");
         return;
     }
-    if (!window->configured || !window->buffer) return;
+    if (!window->configured || !window->buffer) {
+        return;
+    }
 
     busto_renderer_render(window->cr, window->width, window->height);
     wl_surface_attach(window->surface, window->buffer, 0, 0);
@@ -635,18 +711,26 @@ void busto_window_set_key_handler(struct busto_window *window, busto_key_handler
 }
 
 void busto_window_request_redraw(struct busto_window *window) {
-    if (window) window->needs_redraw = 1;
+    if (window) {
+        window->needs_redraw = 1;
+    }
 }
 
 int busto_window_needs_redraw(struct busto_window *window) {
-    if (!window) return 0;
+    if (!window) {
+        return 0;
+    }
+
     int needs = window->needs_redraw;
     window->needs_redraw = 0;
     return needs;
 }
 
 void busto_window_update_repeats(struct busto_window *window) {
-    if (!window) return;
+    if (!window) {
+        return;
+    }
+
     busto_repeat_update(
         &window->repeat,
         window->key_handler,

@@ -86,6 +86,8 @@ static void render_plain_content(
     int height
 )
 {
+    //not using width i gess
+    (void)width;
     if (!content)
         return;
 

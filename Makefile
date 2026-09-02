@@ -3,7 +3,7 @@ TARGET = busto-browser
 UNAME_S := $(shell uname -s)
 
 COMMON_SRC = src/browser.c src/renderer.c src/http.c src/html.c src/input.c src/utils.c src/key_repeat.c
-COMMON_HEADERS = include/busto/window.h include/busto/renderer.h include/busto/http.h include/busto/html.h include/busto/input.h include/busto/utils.h include/busto/key_repeat.h
+COMMON_HEADERS = include/busto/window.h include/busto/renderer.h include/busto/http.h include/busto/html.h include/busto/input.h include/busto/utils.h include/busto/key_repeat.h include/busto/busto_script.h include/busto/script_runtime.h
 
 PKG_CONFIG ?= pkg-config
 
@@ -21,8 +21,8 @@ else
     PROTO_C   = $(PROTO_DIR)/xdg-shell-client-protocol.c
     PROTO_XML = /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml
     CFLAGS = -Wall -Wextra -std=c99 -D_POSIX_C_SOURCE=200809L -I include/ -I $(PROTO_DIR) -I$(CAIRO_INCDIR) $(shell $(PKG_CONFIG) --cflags cairo libcurl wayland-client 2>/dev/null)
-    PLATFORM_SRC = platform/wayland/window_wayland.c $(PROTO_C)
-    LIBS = $(shell $(PKG_CONFIG) --libs cairo libcurl wayland-client 2>/dev/null) -lpthread
+    PLATFORM_SRC = platform/wayland/window_wayland.c $(PROTO_C) src/busto_script.c
+    LIBS = $(shell $(PKG_CONFIG) --libs cairo libcurl wayland-client 2>/dev/null) -lpthread -ldl
 endif
 
 SOURCES = $(COMMON_SRC) $(PLATFORM_SRC)

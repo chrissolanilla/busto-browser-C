@@ -5,6 +5,8 @@
 #include "../include/busto/html.h"
 #include "../include/busto/input.h"
 #include "../include/busto/utils.h"
+#include "../include/busto/busto_script.h"
+#include "../include/busto/script_runtime.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,7 +18,10 @@ static struct busto_window *g_window = NULL;
 static char *g_current_url = NULL;
 static pthread_t g_fetch_thread;
 static int g_fetching = 0;
+static int g_fetch_thread_active = 0;
 static char lastKey[64] = {0};
+
+static void load_url(const char *url);
 
 /* enum busto_content_mode { */
 /*     BUSTO_CONTENT_RICH, */
@@ -30,6 +35,7 @@ static char lastKey[64] = {0};
 struct fetch_result {
     char *content;
     char *title;
+    char *script_source;
     enum busto_content_mode mode;
     int ready;
 };
@@ -43,6 +49,37 @@ static void refresh_display(void) {
     //busto_window_redraw(g_window);
     busto_window_request_redraw(g_window);
 }
+
+#ifdef __linux__
+static void script_set_content(const char *text)
+{
+    busto_renderer_set_content_mode(BUSTO_CONTENT_PLAIN);
+    busto_renderer_set_content(text ? text : "");
+    refresh_display();
+}
+
+static void script_set_title(const char *title)
+{
+    busto_window_set_title(g_window, title ? title : "Busto Browser");
+}
+
+static void script_navigate(const char *url)
+{
+    load_url(url);
+}
+
+static void script_request_redraw(void)
+{
+    refresh_display();
+}
+
+static struct busto_api g_busto_api = {
+    .set_content = script_set_content,
+    .set_title = script_set_title,
+    .navigate = script_navigate,
+    .request_redraw = script_request_redraw,
+};
+#endif
 
 static void sync_urlbar_to_renderer(void) {
     busto_renderer_set_url(busto_input_get_url(g_input));
@@ -95,12 +132,50 @@ static char *read_local_file(const char *url)
     return buffer;
 }
 
+static char *find_busto_script_src(const char *html)
+{
+    const char *start =
+        strstr(html, "<busto-script");
+
+    if (!start) {
+        return NULL;
+    }
+
+    const char *src = strstr(start, "src=\"");
+
+    if (!src) {
+        return NULL;
+    }
+
+    src += strlen("src=\"");
+
+    const char *end = strchr(src, '"');
+
+    if (!end) {
+        return NULL;
+    }
+
+    size_t len = (size_t)(end - src);
+
+    char *result = malloc(len + 1);
+
+    if (!result) {
+        return NULL;
+    }
+
+    memcpy(result, src, len);
+    result[len] = '\0';
+
+    return result;
+}
+
 static void *fetch_url_thread(void *arg)
 {
     char *url = arg;
 
     char *result_content = NULL;
     char *result_title = NULL;
+    char *result_script_source = NULL;
     enum busto_content_mode result_mode = BUSTO_CONTENT_PLAIN;
 
     printf("Fetching URL: %s\n", url);
@@ -115,8 +190,34 @@ static void *fetch_url_thread(void *arg)
     }
     else {
         char *content = busto_http_get(url);
-
         if (content) {
+            char *script_url = find_busto_script_src(content);
+
+            if (script_url) {
+                if (
+                    strncmp(script_url, "http://", 7) == 0 ||
+                    strncmp(script_url, "https://", 8) == 0
+                ) {
+                    result_script_source = busto_http_get(script_url);
+                    if (!result_script_source) {
+                        fprintf(
+                            stderr,
+                            "Failed to load busto script: %s\n",
+                            script_url
+                        );
+                    }
+                }
+                else {
+                    fprintf(
+                        stderr,
+                        "Unsupported busto script URL: %s\n",
+                        script_url
+                    );
+                }
+
+                free(script_url);
+            }
+
             struct busto_html_document *doc = busto_html_parse(content);
 
             if (doc) {
@@ -167,9 +268,11 @@ static void *fetch_url_thread(void *arg)
 
     free(g_pending_result.content);
     free(g_pending_result.title);
+    free(g_pending_result.script_source);
 
     g_pending_result.content = result_content;
     g_pending_result.title = result_title;
+    g_pending_result.script_source = result_script_source;
     g_pending_result.mode = result_mode;
     g_pending_result.ready = 1;
 
@@ -181,7 +284,9 @@ static void *fetch_url_thread(void *arg)
 }
 
 static void load_url(const char *url) {
-    if (!url || g_fetching) return;
+    if (!url || g_fetching) {
+        return;
+    }
 
     if (g_current_url) {
         free(g_current_url);
@@ -197,8 +302,22 @@ static void load_url(const char *url) {
     //prob shows loading here
     refresh_display();
     g_fetching = 1;
-    pthread_create(&g_fetch_thread, NULL, fetch_url_thread, strdup(url));
-    pthread_detach(g_fetch_thread);
+    char *thread_url = strdup(url);
+
+    if (!thread_url) {
+        perror("strdup");
+        g_fetching = 0;
+        return;
+    }
+
+    if (pthread_create(&g_fetch_thread, NULL, fetch_url_thread, thread_url) == 0) {
+        g_fetch_thread_active = 1;
+    }
+    else {
+        perror("pthread_create");
+        free(thread_url);
+        g_fetching = 0;
+    }
 }
 
 static void reload_current_page(void) {
@@ -209,7 +328,9 @@ static void reload_current_page(void) {
 }
 
 static void handle_key(struct busto_window *window, const char *key, void *user_data) {
-    if (!key) return;
+    if (!key) {
+        return;
+    }
 
     (void)user_data;
     printf("Key received: '%s'\n", key);
@@ -314,6 +435,7 @@ static void process_fetch_result(void)
 {
     char *content = NULL;
     char *title = NULL;
+    char *script_source = NULL;
     enum busto_content_mode mode;
 
     pthread_mutex_lock(&g_fetch_mutex);
@@ -326,15 +448,24 @@ static void process_fetch_result(void)
     //move ownership out of pending result.
     content = g_pending_result.content;
     title = g_pending_result.title;
+    script_source = g_pending_result.script_source;
     mode = g_pending_result.mode;
 
     g_pending_result.content = NULL;
     g_pending_result.title = NULL;
+    g_pending_result.script_source = NULL;
     g_pending_result.ready = 0;
 
-    g_fetching = 0;
-
     pthread_mutex_unlock(&g_fetch_mutex);
+
+    if (g_fetch_thread_active) {
+        if (pthread_join(g_fetch_thread, NULL) != 0) {
+            perror("pthread_join");
+        }
+        g_fetch_thread_active = 0;
+    }
+
+    g_fetching = 0;
 
     //this all runs on the main thread
     busto_renderer_set_content_mode(mode);
@@ -361,8 +492,17 @@ static void process_fetch_result(void)
 
     refresh_display();
 
+#ifdef __linux__
+    busto_script_unload();
+
+    if (script_source) {
+        busto_script_compile_and_run(script_source, &g_busto_api);
+    }
+#endif
+
     free(content);
     free(title);
+    free(script_source);
 }
 
 int main() {
@@ -403,22 +543,27 @@ int main() {
 
 
     //main loop
-    while(busto_window_is_running(g_window)) {
+    while (busto_window_is_running(g_window)) {
         process_fetch_result();
         //framerate tick
         busto_window_update_repeats(g_window);
         //wait for events or timeout
         busto_window_poll(g_window, 16);
         //if something happens, redraw also
-        if(busto_window_needs_redraw(g_window)){
+        if (busto_window_needs_redraw(g_window)) {
             busto_window_redraw(g_window);
         }
     }
 
     //get rid of threads
-    if (g_fetching) {
+    if (g_fetch_thread_active) {
         pthread_join(g_fetch_thread, NULL);
+        g_fetch_thread_active = 0;
     }
+
+#ifdef __linux__
+    busto_script_unload();
+#endif
 
     busto_input_destroy(g_input);
     busto_window_destroy(g_window);
