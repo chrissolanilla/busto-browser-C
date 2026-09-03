@@ -320,22 +320,30 @@ static void load_url(const char *url) {
         return;
     }
 
+    char *new_current_url = strdup(url);
+    if (!new_current_url) {
+        perror("strdup");
+        return;
+    }
+
     if (g_current_url) {
         free(g_current_url);
     }
-    g_current_url = strdup(url);
+    /* g_current_url = strdup(url); */
+    g_current_url = new_current_url;
 
     //update inputa nd render
-    busto_input_set_url(g_input, url);
+    /* busto_input_set_url(g_input, url); */
+    busto_input_set_url(g_input, new_current_url);
     sync_urlbar_to_renderer();
-    busto_renderer_set_url(url);
+    busto_renderer_set_url(new_current_url);
     busto_renderer_graphics_clear();
     busto_renderer_set_content("Loading...");
 
     //prob shows loading here
     refresh_display();
     g_fetching = 1;
-    char *thread_url = strdup(url);
+    char *thread_url = strdup(new_current_url);
 
     if (!thread_url) {
         perror("strdup");

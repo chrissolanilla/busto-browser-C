@@ -24,7 +24,6 @@ void busto_input_destroy(struct busto_input *input) {
 
 void busto_input_set_url(struct busto_input *input, const char *url) {
     if (!input || !url) return;
-    //load_url passes our own buffer; copying it onto itself is a no-op
 	//some weird bug where if we did copy and paste bad shit happened
     if (url == input->url) {
         return;
