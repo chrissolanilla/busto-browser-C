@@ -22,4 +22,7 @@ void busto_window_request_redraw(struct busto_window *window);
 int busto_window_needs_redraw(struct busto_window *window);
 void busto_window_redraw(struct busto_window *window);
 
+int busto_window_get_width(struct busto_window *window);
+int busto_window_get_height(struct busto_window *window);
+
 #endif

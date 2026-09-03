@@ -9,10 +9,21 @@ static struct {
     char *url;
     char *content;
     int url_input_active;
-     enum busto_content_mode content_mode;
+    enum busto_content_mode content_mode;
     int scroll_y;
     size_t url_cursor_pos;
-} renderer_state = {0};
+
+    struct busto_draw_command *draw_commands;
+    size_t draw_command_count;
+    size_t draw_command_cap;
+
+    double fill_r;
+    double fill_g;
+    double fill_b;
+    double fill_a;
+} renderer_state = {
+    .fill_a = 1.0
+};
 
 void busto_renderer_set_content_mode(enum busto_content_mode mode)
 {
@@ -246,6 +257,19 @@ static void render_rich_content(
     free(content_copy);
 }
 
+static void render_graphics(cairo_t *cr)
+{
+    for (size_t i = 0; i < renderer_state.draw_command_count; i++) {
+        struct busto_draw_command *cmd = &renderer_state.draw_commands[i];
+
+        if (cmd->type == BUSTO_DRAW_FILL_RECT) {
+            cairo_set_source_rgba(cr, cmd->r, cmd->g, cmd->b, cmd->a);
+            cairo_rectangle(cr, cmd->x, cmd->y, cmd->w, cmd->h);
+            cairo_fill(cr);
+        }
+    }
+}
+
 void busto_renderer_render(cairo_t *cr, int width, int height) {
     //clear surface with white background
     //also the window bg
@@ -341,6 +365,8 @@ void busto_renderer_render(cairo_t *cr, int width, int height) {
         cairo_move_to(cr, 20, 85);
         cairo_show_text(cr, "Enter a URL to get started");
     }
+
+    render_graphics(cr);
 }
 
 void busto_renderer_set_url(const char *url) {
@@ -373,13 +399,69 @@ void busto_renderer_free(void) {
         free(renderer_state.url);
         renderer_state.url = NULL;
     }
+
     if (renderer_state.content) {
         free(renderer_state.content);
         renderer_state.content = NULL;
     }
+
+    free(renderer_state.draw_commands);
+    renderer_state.draw_commands = NULL;
+    renderer_state.draw_command_count = 0;
+    renderer_state.draw_command_cap = 0;
 }
 
 void busto_renderer_set_cursor_pos(size_t pos) {
     renderer_state.url_cursor_pos = pos;
 }
 
+void busto_renderer_graphics_clear(void)
+{
+    renderer_state.draw_command_count = 0;
+}
+
+void busto_renderer_graphics_set_fill(double r, double g, double b, double a)
+{
+    renderer_state.fill_r = r;
+    renderer_state.fill_g = g;
+    renderer_state.fill_b = b;
+    renderer_state.fill_a = a;
+}
+
+void busto_renderer_graphics_fill_rect(double x, double y, double w, double h)
+{
+    if (w <= 0 || h <= 0) {
+        return;
+    }
+
+    if (renderer_state.draw_command_count == renderer_state.draw_command_cap) {
+        size_t new_cap = renderer_state.draw_command_cap == 0
+            ? 64
+            : renderer_state.draw_command_cap * 2;
+
+        struct busto_draw_command *new_commands = realloc(
+            renderer_state.draw_commands,
+            new_cap * sizeof(*new_commands)
+        );
+
+        if (!new_commands) {
+            return;
+        }
+
+        renderer_state.draw_commands = new_commands;
+        renderer_state.draw_command_cap = new_cap;
+    }
+
+    struct busto_draw_command *cmd =
+        &renderer_state.draw_commands[renderer_state.draw_command_count++];
+
+    cmd->type = BUSTO_DRAW_FILL_RECT;
+    cmd->x = x;
+    cmd->y = y;
+    cmd->w = w;
+    cmd->h = h;
+    cmd->r = renderer_state.fill_r;
+    cmd->g = renderer_state.fill_g;
+    cmd->b = renderer_state.fill_b;
+    cmd->a = renderer_state.fill_a;
+}

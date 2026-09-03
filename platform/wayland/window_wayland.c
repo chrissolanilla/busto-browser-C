@@ -1030,3 +1030,11 @@ void busto_window_update_repeats(struct busto_window *window) {
         keycode_to_string
     );
 }
+
+int busto_window_get_width(struct busto_window *window) {
+    return window ? window->width : 0;
+}
+
+int busto_window_get_height(struct busto_window *window) {
+    return window ? window->height : 0;
+}

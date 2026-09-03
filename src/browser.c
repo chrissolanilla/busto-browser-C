@@ -73,11 +73,43 @@ static void script_request_redraw(void)
     refresh_display();
 }
 
+static void script_graphics_clear(void)
+{
+    busto_renderer_graphics_clear();
+    refresh_display();
+}
+
+static void script_graphics_set_fill(double r, double g, double b, double a)
+{
+    busto_renderer_graphics_set_fill(r, g, b, a);
+}
+
+static void script_graphics_fill_rect(double x, double y, double w, double h)
+{
+    busto_renderer_graphics_fill_rect(x, y, w, h);
+    refresh_display();
+}
+
+static int script_get_width(void) {
+    return busto_window_get_width(g_window);
+}
+
+static int script_get_height(void) {
+    return busto_window_get_height(g_window);
+}
+
 static struct busto_api g_busto_api = {
     .set_content = script_set_content,
     .set_title = script_set_title,
     .navigate = script_navigate,
     .request_redraw = script_request_redraw,
+    .graphics = {
+        .clear = script_graphics_clear,
+        .set_fill = script_graphics_set_fill,
+        .fill_rect = script_graphics_fill_rect,
+    },
+    .get_width = script_get_width,
+    .get_height = script_get_height,
 };
 #endif
 
