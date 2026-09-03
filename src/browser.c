@@ -329,6 +329,7 @@ static void load_url(const char *url) {
     busto_input_set_url(g_input, url);
     sync_urlbar_to_renderer();
     busto_renderer_set_url(url);
+    busto_renderer_graphics_clear();
     busto_renderer_set_content("Loading...");
 
     //prob shows loading here
