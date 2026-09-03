@@ -13,6 +13,10 @@
 #include <pthread.h>
 #include <unistd.h>
 
+#if defined(__linux__) || defined(__APPLE__)
+#define BUSTO_ENABLE_SCRIPT 1
+#endif
+
 static struct busto_input *g_input = NULL;
 static struct busto_window *g_window = NULL;
 static char *g_current_url = NULL;
@@ -50,7 +54,7 @@ static void refresh_display(void) {
     busto_window_request_redraw(g_window);
 }
 
-#ifdef __linux__
+#ifdef BUSTO_ENABLE_SCRIPT
 static void script_set_content(const char *text)
 {
     busto_renderer_set_content_mode(BUSTO_CONTENT_PLAIN);
@@ -554,7 +558,7 @@ static void process_fetch_result(void)
 
     refresh_display();
 
-#ifdef __linux__
+#ifdef BUSTO_ENABLE_SCRIPT
     busto_script_unload();
 
     if (script_source) {
@@ -624,7 +628,7 @@ int main() {
         g_fetch_thread_active = 0;
     }
 
-#ifdef __linux__
+#ifdef BUSTO_ENABLE_SCRIPT
     busto_script_unload();
 #endif
 

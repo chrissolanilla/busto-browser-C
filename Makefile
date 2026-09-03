@@ -11,8 +11,9 @@ CAIRO_INCDIR := $(shell $(PKG_CONFIG) --variable=includedir cairo 2>/dev/null)
 
 ifeq ($(UNAME_S),Darwin)
     CC = clang
-    CFLAGS = -Wall -Wextra -std=c11 -I include/ -I$(CAIRO_INCDIR) $(shell $(PKG_CONFIG) --cflags cairo libcurl 2>/dev/null) -fobjc-arc
-    PLATFORM_SRC = platform/macos/window_macos.m
+    CFLAGS = -Wall -Wextra -std=c11 -I include/ -I$(CAIRO_INCDIR) $(shell $(PKG_CONFIG) --cflags cairo libcurl 2>/dev/null)
+    OBJCFLAGS = $(CFLAGS) -fobjc-arc
+    PLATFORM_SRC = platform/macos/window_macos.m src/busto_script.c
     LIBS = -framework Cocoa -framework CoreGraphics $(shell $(PKG_CONFIG) --libs cairo libcurl 2>/dev/null)
 else
     CC ?= gcc
@@ -21,6 +22,7 @@ else
     PROTO_C   = $(PROTO_DIR)/xdg-shell-client-protocol.c
     PROTO_XML = /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml
     CFLAGS = -Wall -Wextra -std=c99 -D_POSIX_C_SOURCE=200809L -I include/ -I $(PROTO_DIR) -I$(CAIRO_INCDIR) $(shell $(PKG_CONFIG) --cflags cairo libcurl wayland-client 2>/dev/null)
+    OBJCFLAGS = $(CFLAGS)
     PLATFORM_SRC = platform/wayland/window_wayland.c $(PROTO_C) src/busto_script.c
     LIBS = $(shell $(PKG_CONFIG) --libs cairo libcurl wayland-client 2>/dev/null) -lpthread -ldl
 endif
@@ -44,7 +46,7 @@ $(TARGET): $(OBJECTS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 %.o: %.m $(COMMON_HEADERS)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(OBJCFLAGS) -c $< -o $@
 
 clean:
 	rm -f $(OBJECTS) $(TARGET)

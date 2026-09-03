@@ -29,6 +29,8 @@ struct busto_window {
 
     busto_key_handler_t key_handler;
     void *key_handler_data;
+    busto_paste_handler_t paste_handler;
+    void *paste_handler_data;
 
     char key_names[256][32];
     struct busto_repeat_state repeat;
@@ -460,6 +462,32 @@ void busto_window_set_key_handler(struct busto_window *window, busto_key_handler
     }
 }
 
+void busto_window_set_paste_handler(struct busto_window *window, busto_paste_handler_t handler, void *data) {
+    if (window) {
+        window->paste_handler = handler;
+        window->paste_handler_data = data;
+    }
+}
+
+void busto_window_request_paste(struct busto_window *window) {
+    if (!window || !window->paste_handler) {
+        return;
+    }
+
+    @autoreleasepool {
+        NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+        NSString *text = [pasteboard stringForType:NSPasteboardTypeString];
+
+        if (text) {
+            window->paste_handler(
+                window,
+                [text UTF8String],
+                window->paste_handler_data
+            );
+        }
+    }
+}
+
 void busto_window_request_redraw(struct busto_window *window) {
     if (window) {
 		window->needs_redraw =1;
@@ -488,4 +516,12 @@ void busto_window_update_repeats(struct busto_window *window) {
         window,
         mac_keycode_string
     );
+}
+
+int busto_window_get_width(struct busto_window *window) {
+    return window ? window->width : 0;
+}
+
+int busto_window_get_height(struct busto_window *window) {
+    return window ? window->height : 0;
 }
