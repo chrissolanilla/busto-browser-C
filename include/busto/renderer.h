@@ -3,6 +3,9 @@
 
 #include <cairo/cairo.h>
 #include <stddef.h>
+#include "busto_style.h"
+
+void busto_renderer_set_stylesheet(const struct busto_stylesheet *stylesheet);
 
 void busto_renderer_render(cairo_t *cr, int width, int height);
 void busto_renderer_set_url(const char *url);

@@ -5,6 +5,7 @@
 #include "../include/busto/html.h"
 #include "../include/busto/input.h"
 #include "../include/busto/utils.h"
+#include "../include/busto/busto_style.h"
 #include "../include/busto/busto_script.h"
 #include "../include/busto/script_runtime.h"
 #include <stdio.h>
@@ -550,6 +551,7 @@ static void process_fetch_result(void)
     char *script_source = NULL;
     char *style_source = NULL;
     enum busto_content_mode mode;
+    struct busto_stylesheet stylesheet;
 
     pthread_mutex_lock(&g_fetch_mutex);
 
@@ -582,6 +584,8 @@ static void process_fetch_result(void)
 
     g_fetching = 0;
 
+    busto_stylesheet_parse(&stylesheet, style_source);
+    busto_renderer_set_stylesheet(&stylesheet);
     //this all runs on the main thread
     busto_renderer_set_content_mode(mode);
     busto_renderer_set_content(content);

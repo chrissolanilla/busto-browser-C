@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "../include/busto/renderer.h"
+#include "../include/busto/busto_style.h"
 #include <cairo/cairo.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,6 +15,7 @@ static struct {
     size_t url_cursor_pos;
 
     struct busto_draw_command *draw_commands;
+    struct busto_stylesheet stylesheet;
     size_t draw_command_count;
     size_t draw_command_cap;
 
@@ -25,24 +27,91 @@ static struct {
     .fill_a = 1.0
 };
 
+
+void busto_renderer_set_stylesheet(const struct busto_stylesheet *stylesheet) {
+    if (stylesheet) {
+        renderer_state.stylesheet = *stylesheet;
+    }
+    else {
+        busto_stylesheet_init(&renderer_state.stylesheet);
+    }
+}
+
 void busto_renderer_set_content_mode(enum busto_content_mode mode)
 {
     renderer_state.content_mode = mode;
 }
 
-static double font_for_marker(const char *line, const char **out_text_start) {
-    *out_text_start = line;
+static double font_for_marker(const char *line,
+        const char **out_text_start,
+        const char **out_tag) {
 
-    if (strncmp(line, "[[H1]]", 6) == 0) { *out_text_start = line + 6; return 28.0; }
-    if (strncmp(line, "[[H2]]", 6) == 0) { *out_text_start = line + 6; return 22.0; }
-    if (strncmp(line, "[[H3]]", 6) == 0) { *out_text_start = line + 6; return 18.0; }
-    if (strncmp(line, "[[H4]]", 6) == 0) { *out_text_start = line + 6; return 16.0; }
-    if (strncmp(line, "[[H5]]", 6) == 0) { *out_text_start = line + 6; return 15.0; }
-    if (strncmp(line, "[[H6]]", 6) == 0) { *out_text_start = line + 6; return 14.0; }
-    if (strncmp(line, "[[LI]]", 6) == 0) { *out_text_start = line + 6; return 14.0; }
-    if (strncmp(line, "[[P]]", 5)  == 0) { *out_text_start = line + 5; return 14.0; }
+    *out_text_start = line;
+    *out_tag = NULL;
+
+    if (strncmp(line, "[[H1]]", 6) == 0) {
+        *out_text_start = line + 6;
+        *out_tag = "h1";
+        return 28.0;
+    }
+    if (strncmp(line, "[[H2]]", 6) == 0) {
+        *out_text_start = line + 6;
+        *out_tag = "h2";
+        return 22.0;
+    }
+    if (strncmp(line, "[[H3]]", 6) == 0) {
+        *out_text_start = line + 6;
+        *out_tag = "h3";
+        return 18.0;
+    }
+    if (strncmp(line, "[[H4]]", 6) == 0) {
+        *out_text_start = line + 6;
+        *out_tag = "h4";
+        return 16.0;
+    }
+    if (strncmp(line, "[[H5]]", 6) == 0) {
+        *out_text_start = line + 6;
+        *out_tag = "h5";
+        return 15.0;
+    }
+    if (strncmp(line, "[[H6]]", 6) == 0) {
+        *out_text_start = line + 6;
+        *out_tag = "h6";
+        return 14.0;
+    }
+    if (strncmp(line, "[[LI]]", 6) == 0) {
+        *out_text_start = line + 6;
+        *out_tag = "li";
+        return 14.0;
+    }
+    if (strncmp(line, "[[P]]", 5)  == 0) {
+        *out_text_start = line + 5;
+        *out_tag = "p";
+        return 14.0;
+    }
 
     return 14.0;
+}
+
+static void apply_text_color(cairo_t *cr, const char *tag) {
+    const struct busto_style_rule *rule = NULL;
+
+    if (tag) {
+        rule = busto_stylesheet_find_tag(&renderer_state.stylesheet, tag);
+    }
+
+    if (rule && rule->has_color) {
+        cairo_set_source_rgba(
+            cr,
+            rule->color.r,
+            rule->color.g,
+            rule->color.b,
+            rule->color.a
+        );
+    }
+    else {
+        cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+    }
 }
 
 static void strip_close_markers(char *s) {
@@ -54,8 +123,7 @@ static void strip_close_markers(char *s) {
     }
 }
 
-static char *expand_tabs(const char *line, size_t tab_width)
-{
+static char *expand_tabs(const char *line, size_t tab_width) {
     if (!line || tab_width == 0)
         return NULL;
 
@@ -95,8 +163,7 @@ static void render_plain_content(
     const char *content,
     int width,
     int height
-)
-{
+) {
     //not using width i gess
     (void)width;
     if (!content)
@@ -142,8 +209,7 @@ static void render_rich_content(
     const char *content,
     int width,
     int height
-)
-{
+) {
     if (!content)
         return;
 
@@ -160,9 +226,10 @@ static void render_rich_content(
 
         if (strlen(line) > 0) {
             const char *text_start = NULL;
+            const char *tag = NULL;
 
             double font_size =
-                font_for_marker(line, &text_start);
+                font_for_marker(line, &text_start, &tag);
 
             char temp[1024];
 
@@ -235,6 +302,7 @@ static void render_rich_content(
                     }
 
                     cairo_move_to(cr, 20, y);
+                    apply_text_color(cr, tag);
                     cairo_show_text(cr, temp_line);
 
                     y += line_step;
@@ -242,6 +310,7 @@ static void render_rich_content(
             }
             else {
                 cairo_move_to(cr, 20, y);
+                apply_text_color(cr, tag);
                 cairo_show_text(cr, temp);
 
                 y += line_step;
@@ -257,8 +326,7 @@ static void render_rich_content(
     free(content_copy);
 }
 
-static void render_graphics(cairo_t *cr)
-{
+static void render_graphics(cairo_t *cr) {
     for (size_t i = 0; i < renderer_state.draw_command_count; i++) {
         struct busto_draw_command *cmd = &renderer_state.draw_commands[i];
 
@@ -415,21 +483,18 @@ void busto_renderer_set_cursor_pos(size_t pos) {
     renderer_state.url_cursor_pos = pos;
 }
 
-void busto_renderer_graphics_clear(void)
-{
+void busto_renderer_graphics_clear(void) {
     renderer_state.draw_command_count = 0;
 }
 
-void busto_renderer_graphics_set_fill(double r, double g, double b, double a)
-{
+void busto_renderer_graphics_set_fill(double r, double g, double b, double a) {
     renderer_state.fill_r = r;
     renderer_state.fill_g = g;
     renderer_state.fill_b = b;
     renderer_state.fill_a = a;
 }
 
-void busto_renderer_graphics_fill_rect(double x, double y, double w, double h)
-{
+void busto_renderer_graphics_fill_rect(double x, double y, double w, double h) {
     if (w <= 0 || h <= 0) {
         return;
     }
