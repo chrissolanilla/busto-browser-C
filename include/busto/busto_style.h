@@ -17,6 +17,9 @@ struct busto_style_rule {
     char tag[BUSTO_MAX_TAG_NAME];
     int has_color;
     struct busto_color color;
+
+    int has_background_color;
+    struct busto_color background_color;
 };
 
 struct busto_stylesheet {

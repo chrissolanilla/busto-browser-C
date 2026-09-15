@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <pthread.h>
 #include <unistd.h>
 
@@ -170,38 +171,223 @@ static char *read_local_file(const char *url)
     return buffer;
 }
 
+static char *extract_quoted_attr(
+    const char *tag_start,
+    const char *tag_end,
+    const char *attr_name
+) {
+    const char *cursor = tag_start;
+    size_t attr_len = strlen(attr_name);
+
+    while (cursor < tag_end) {
+        const char *found = strstr(cursor, attr_name);
+        const char *p;
+        char quote;
+        const char *value_start;
+        const char *value_end;
+        size_t value_len;
+        char *result;
+
+        if (!found || found >= tag_end) {
+            return NULL;
+        }
+
+        if (found > tag_start) {
+            char before = *(found - 1);
+
+            if (!isspace((unsigned char)before) && before != '<') {
+                cursor = found + attr_len;
+                continue;
+            }
+        }
+
+        p = found + attr_len;
+        while (p < tag_end && isspace((unsigned char)*p)) {
+            p++;
+        }
+
+        if (p >= tag_end || *p != '=') {
+            cursor = found + attr_len;
+            continue;
+        }
+
+        p++;
+        while (p < tag_end && isspace((unsigned char)*p)) {
+            p++;
+        }
+
+        if (p >= tag_end || (*p != '"' && *p != '\'')) {
+            cursor = found + attr_len;
+            continue;
+        }
+
+        quote = *p;
+        value_start = p + 1;
+        value_end = value_start;
+
+        while (value_end < tag_end && *value_end != quote) {
+            value_end++;
+        }
+
+        if (value_end >= tag_end) {
+            return NULL;
+        }
+
+        value_len = (size_t)(value_end - value_start);
+        result = malloc(value_len + 1);
+
+        if (!result) {
+            return NULL;
+        }
+
+        memcpy(result, value_start, value_len);
+        result[value_len] = '\0';
+
+        return result;
+    }
+
+    return NULL;
+}
+
 static char *find_busto_style_src(const char *html) {
-    const char *start = strstr(html, "<link rel=\"stylesheet\"");
-    if(!start) {
+    const char *cursor = html;
+
+    if (!html) {
         return NULL;
     }
 
-    const char *href = strstr(start, "href=\"");
-    if(!href) {
-        return  NULL;
+    while ((cursor = strstr(cursor, "<link")) != NULL) {
+        const char *tag_end = strchr(cursor, '>');
+        char *rel;
+        char *href;
+
+        if (!tag_end) {
+            return NULL;
+        }
+
+        rel = extract_quoted_attr(cursor, tag_end, "rel");
+
+        if (rel && strstr(rel, "stylesheet")) {
+            href = extract_quoted_attr(cursor, tag_end, "href");
+            free(rel);
+
+            if (href) {
+                return href;
+            }
+        }
+
+        free(rel);
+        cursor = tag_end + 1;
     }
 
-    href+= strlen("href=\"");
+    return NULL;
+}
 
-    const char *end = strchr(href,'"');
-    if(!end) {
+static char *find_inline_style_blocks(const char *html) {
+    const char *cursor;
+    char *result;
+    size_t result_len = 0;
+    size_t result_cap = 1024;
+
+    if (!html) {
         return NULL;
     }
 
-    size_t len = (size_t)(end-href);
+    result = calloc(1, result_cap);
 
-    char *result = malloc(len + 1);
-    if(!result) {
+    if (!result) {
         return NULL;
     }
 
-    memcpy(result, href, len);
-    result[len] = '\0';
+    cursor = html;
+
+    while ((cursor = strstr(cursor, "<style")) != NULL) {
+        const char *open_end;
+        const char *close_start;
+        size_t css_len;
+
+        open_end = strchr(cursor, '>');
+
+        if (!open_end) {
+            break;
+        }
+
+        open_end++;
+
+        close_start = strstr(open_end, "</style>");
+
+        if (!close_start) {
+            break;
+        }
+
+        css_len = (size_t)(close_start - open_end);
+
+        if (result_len + css_len + 2 >= result_cap) {
+            size_t new_cap = result_cap * 2;
+            char *new_result;
+
+            while (result_len + css_len + 2 >= new_cap) {
+                new_cap *= 2;
+            }
+
+            new_result = realloc(result, new_cap);
+
+            if (!new_result) {
+                free(result);
+                return NULL;
+            }
+
+            result = new_result;
+            result_cap = new_cap;
+        }
+
+        memcpy(result + result_len, open_end, css_len);
+        result_len += css_len;
+
+        result[result_len++] = '\n';
+        result[result_len] = '\0';
+
+        cursor = close_start + strlen("</style>");
+    }
+
+    if (result_len == 0) {
+        free(result);
+        return NULL;
+    }
+
     return result;
 }
 
-static char *find_busto_script_src(const char *html)
-{
+static char *combine_css_sources(const char *a, const char *b) {
+    size_t a_len = a ? strlen(a) : 0;
+    size_t b_len = b ? strlen(b) : 0;
+    char *result;
+
+    if (a_len == 0 && b_len == 0) {
+        return NULL;
+    }
+
+    result = malloc(a_len + b_len + 2);
+
+    if (!result) {
+        return NULL;
+    }
+
+    result[0] = '\0';
+
+    if (a) {
+        strcat(result, a);
+        strcat(result, "\n");
+    }
+
+    if (b) {
+        strcat(result, b);
+    }
+
+    return result;
+}
+
+static char *find_busto_script_src(const char *html) {
     const char *start =
         strstr(html, "<busto-script");
 
@@ -290,12 +476,23 @@ static void *fetch_url_thread(void *arg)
             char *script_url = find_busto_script_src(content);
             //find style.css
             char *style_url = find_busto_style_src(content);
+            char *inline_style_source = find_inline_style_blocks(content);
 
             if(style_url) {
                 printf("STYLE_URL EXISTS!\n");
                 result_style_source = load_file_url(style_url, result_style_source);
                 printf("style_url: %s", result_style_source);
             }
+
+            if(inline_style_source) {
+                printf("INLINE STYLE EXISTS!\n");
+                char *combined = combine_css_sources(result_style_source, inline_style_source);
+                free(result_style_source);
+                free(inline_style_source);
+
+                result_style_source = combined;
+            }
+
             if (script_url) {
                 result_script_source = load_file_url(script_url, result_script_source);
             }

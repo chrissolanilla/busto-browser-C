@@ -1,3 +1,23 @@
+body {
+	background-color: blue;
+}
+
 h1 {
 	color: red;
+	background-color: green;
+}
+
+h2 {
+	background-color: purple;
+	color: yellow;
+}
+
+h3 {
+	background-color: #ff7ac6;
+	color: black;
+}
+
+p {
+	background-color: #292c3a;
+	color: white;
 }

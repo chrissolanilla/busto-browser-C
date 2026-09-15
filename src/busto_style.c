@@ -60,6 +60,13 @@ static int parse_named_color(const char *value, struct busto_color *out) {
         return 1;
     }
 
+    if (strcmp(value, "purple") == 0) {
+        *out = (struct busto_color){126.0/255.0, 1.0/255.0, 126.0/255.0, 1.0};
+        return 1;
+    }
+
+
+
     return 0;
 }
 
@@ -146,9 +153,6 @@ void busto_stylesheet_parse(struct busto_stylesheet *stylesheet, const char *css
         char *selector_end;
         char *block_start;
         char *block_end;
-        char *property;
-        char *value;
-        char *semicolon;
         struct busto_style_rule *rule;
 
         selector_start = skip_space(cursor);
@@ -171,30 +175,53 @@ void busto_stylesheet_parse(struct busto_stylesheet *stylesheet, const char *css
         *block_end = '\0';
 
         rule = &stylesheet->rules[stylesheet->rule_count];
-
         snprintf(rule->tag, sizeof(rule->tag), "%s", selector_start);
+        char *decl = block_start;
+        while (decl && *decl) {
+            char *colon;
+            char *next_decl;
+            char *name;
+            char *value;
 
-        property = strstr(block_start, "color");
+            decl = skip_space(decl);
+            if (*decl == '\0') {
+                break;
+            }
 
-        if (property) {
-            value = strchr(property, ':');
+            next_decl = strchr(decl, ';');
+            if (next_decl) {
+                *next_decl = '\0';
+            }
 
-            if (value) {
-                value++;
-                value = skip_space(value);
+            colon = strchr(decl, ':');
+            if (colon) {
+                *colon = '\0';
 
-                semicolon = strchr(value, ';');
-
-                if (semicolon) {
-                    *semicolon = '\0';
-                }
-
+                name = skip_space(decl);
+                value = skip_space(colon + 1);
+                trim_in_place(name);
                 trim_in_place(value);
 
-                if (parse_color_value(value, &rule->color)) {
-                    rule->has_color = 1;
+                if (strcmp(name, "color") == 0) {
+                    if (parse_color_value(value, &rule->color)) {
+                        rule->has_color = 1;
+                    }
+                }
+                else if (
+                    strcmp(name, "background-color") == 0 ||
+                    strcmp(name, "background") == 0
+                ) {
+                    if (parse_color_value(value, &rule->background_color)) {
+                        rule->has_background_color = 1;
+                    }
                 }
             }
+
+            if (!next_decl) {
+                break;
+            }
+
+            decl = next_decl + 1;
         }
 
         if (rule->tag[0] != '\0') {

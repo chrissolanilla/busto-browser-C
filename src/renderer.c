@@ -93,6 +93,55 @@ static double font_for_marker(const char *line,
     return 14.0;
 }
 
+static void apply_text_background(
+    cairo_t *cr,
+    const char *tag,
+    double x,
+    double y,
+    double width,
+    double height
+) {
+    const struct busto_style_rule *rule = NULL;
+
+    if (tag) {
+        rule = busto_stylesheet_find_tag(&renderer_state.stylesheet, tag);
+    }
+
+    if (!rule || !rule->has_background_color) {
+        return;
+    }
+
+    cairo_set_source_rgba(
+        cr,
+        rule->background_color.r,
+        rule->background_color.g,
+        rule->background_color.b,
+        rule->background_color.a
+    );
+
+    cairo_rectangle(cr, x, y, width, height);
+    cairo_fill(cr);
+}
+
+static void apply_body_background(cairo_t *cr) {
+    const struct busto_style_rule *rule;
+
+    rule = busto_stylesheet_find_tag(&renderer_state.stylesheet, "body");
+
+    if (rule && rule->has_background_color) {
+        cairo_set_source_rgba(
+            cr,
+            rule->background_color.r,
+            rule->background_color.g,
+            rule->background_color.b,
+            rule->background_color.a
+        );
+    }
+    else {
+        cairo_set_source_rgb(cr, 43.0 / 256.0, 46.0 / 256.0, 59.0 / 256.0);
+    }
+}
+
 static void apply_text_color(cairo_t *cr, const char *tag) {
     const struct busto_style_rule *rule = NULL;
 
@@ -301,6 +350,14 @@ static void render_rich_content(
                         }
                     }
 
+                    double text_x = 20;
+                    double text_y = y;
+                    double rect_y = y - font_size;
+                    //right now it starts slightly above the text
+                    double rect_h = line_step+5;
+                    double rect_w = max_width;
+
+                    apply_text_background(cr, tag, text_x, rect_y, rect_w, rect_h);
                     cairo_move_to(cr, 20, y);
                     apply_text_color(cr, tag);
                     cairo_show_text(cr, temp_line);
@@ -309,6 +366,15 @@ static void render_rich_content(
                 }
             }
             else {
+                double text_x = 20;
+                double text_y = y;
+                double rect_y = y - font_size;
+                //for non wrapped stuff, background starts slightly above the text
+                double rect_h = line_step+5;
+                double rect_w = max_width;
+
+                apply_text_background(cr, tag, text_x, rect_y, rect_w, rect_h);
+
                 cairo_move_to(cr, 20, y);
                 apply_text_color(cr, tag);
                 cairo_show_text(cr, temp);
@@ -395,7 +461,11 @@ void busto_renderer_render(cairo_t *cr, int width, int height) {
     //191, 149, 249
     //43, 46, 59
     //cairo_set_source_rgb(cr, 191.0/256.0, 149.0/256.0, 249.0/256.0);
-    cairo_set_source_rgb(cr, 43.0/256.0, 46.0/256.0, 59.0/256.0);
+    //
+    //
+    /* cairo_set_source_rgb(cr, 43.0/256.0, 46.0/256.0, 59.0/256.0); */
+    //instead of above we can fill in the style bgs now.
+    apply_body_background(cr);
     cairo_rectangle(cr, 10, 60, width - 20, height - 70);
     cairo_fill(cr);
 

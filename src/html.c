@@ -16,6 +16,40 @@ static char* find_tag_end(char* tag_start) {
     return end;
 }
 
+static int is_void_tag(const char *tag) {
+    if (!tag) {
+        return 0;
+    }
+
+    return strcmp(tag, "area") == 0 ||
+           strcmp(tag, "base") == 0 ||
+           strcmp(tag, "br") == 0 ||
+           strcmp(tag, "col") == 0 ||
+           strcmp(tag, "embed") == 0 ||
+           strcmp(tag, "hr") == 0 ||
+           strcmp(tag, "img") == 0 ||
+           strcmp(tag, "input") == 0 ||
+           strcmp(tag, "link") == 0 ||
+           strcmp(tag, "meta") == 0 ||
+           strcmp(tag, "source") == 0 ||
+           strcmp(tag, "track") == 0 ||
+           strcmp(tag, "wbr") == 0;
+}
+
+static int is_non_rendered_tag(const char *tag) {
+    if (!tag) {
+        return 0;
+    }
+
+    return strcmp(tag, "title") == 0 ||
+           /* strcmp(tag, "head") == 0 || */
+           strcmp(tag, "style") == 0 ||
+           strcmp(tag, "script") == 0 ||
+           strcmp(tag, "busto-script") == 0 ||
+           strcmp(tag, "link") == 0 ||
+           strcmp(tag, "meta") == 0;
+}
+
 static char* extract_text_between_tags(char** html_ptr) {
     char* start = *html_ptr;
     char* end = start;
@@ -139,7 +173,7 @@ static struct busto_html_element* parse_element(char** html_ptr) {
         }
     }
 
-    if (!self_closing && strcmp(tag_name, "br") != 0 && strcmp(tag_name, "img") != 0) {
+    if (!self_closing && !is_void_tag(tag_name)) {
         //parse children
         struct busto_html_element** last_child_ptr = &element->children;
 
@@ -353,7 +387,13 @@ static void tb_append(struct busto_text_buffer *tb, const char *s) {
 
 void busto_html_extract_rich_text(struct busto_html_element *element,
                                  char *buffer, size_t buffer_size) {
-    if (!element || !buffer || buffer_size == 0) return;
+    if (!element || !buffer || buffer_size == 0) {
+        return;
+    }
+
+    if (is_non_rendered_tag(element->tag)) {
+        return;
+    }
 
     if (element->text && element->tag && strcmp(element->tag, "#text") == 0) {
         buf_append(buffer, buffer_size, element->text);
@@ -389,7 +429,13 @@ void busto_html_extract_rich_text(struct busto_html_element *element,
 
 void busto_html_extract_rich_text_fast(struct busto_html_element *element,
                                        struct busto_text_buffer *tb) {
-    if (!element || !tb) return;
+    if (!element || !tb) {
+        return;
+    }
+
+    if (is_non_rendered_tag(element->tag)) {
+        return;
+    }
 
     if (element->text && element->tag && strcmp(element->tag, "#text") == 0) {
         tb_append(tb, element->text);
