@@ -291,7 +291,9 @@ static void *fetch_url_thread(void *arg)
             char *style_url = find_busto_style_src(content);
 
             if(style_url) {
+                printf("STYLE_URL EXISTS!\n");
                 result_style_source = load_file_url(style_url, result_style_source);
+                printf("style_url: %s", result_style_source);
             }
             if (script_url) {
                 result_script_source = load_file_url(script_url, result_script_source);
