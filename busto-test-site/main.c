@@ -24,4 +24,19 @@ void busto_main(struct busto_api *api)
     /* api->graphics.fill_rect(0, 0, 800, 600); */
     api->graphics.fill_rect(width / 2, height / 2, 100, 100);
     api->request_redraw();
+
+    int factor = 1;
+    for(int i =0;i<500; i++) {
+        width += 1 * factor;
+        height += 1 * factor;
+        api->graphics.clear();
+        api->graphics.fill_rect(width / 2, height / 2, 100, 100);
+
+        if(width > 800){
+            factor *= -1;
+        }
+
+        api->graphics.fill_rect(width / 2, height / 2, 100, 100);
+        api->request_redraw();
+    }
 }

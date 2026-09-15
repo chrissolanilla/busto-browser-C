@@ -40,6 +40,7 @@ struct fetch_result {
     char *content;
     char *title;
     char *script_source;
+    char *style_source;
     enum busto_content_mode mode;
     int ready;
 };
@@ -168,6 +169,36 @@ static char *read_local_file(const char *url)
     return buffer;
 }
 
+static char *find_busto_style_src(const char *html) {
+    const char *start = strstr(html, "<link rel=\"stylesheet\"");
+    if(!start) {
+        return NULL;
+    }
+
+    const char *href = strstr(start, "href=\"");
+    if(!href) {
+        return  NULL;
+    }
+
+    href+= strlen("href=\"");
+
+    const char *end = strchr(href,'"');
+    if(!end) {
+        return NULL;
+    }
+
+    size_t len = (size_t)(end-href);
+
+    char *result = malloc(len + 1);
+    if(!result) {
+        return NULL;
+    }
+
+    memcpy(result, href, len);
+    result[len] = '\0';
+    return result;
+}
+
 static char *find_busto_script_src(const char *html)
 {
     const char *start =
@@ -205,6 +236,32 @@ static char *find_busto_script_src(const char *html)
     return result;
 }
 
+char *load_file_url(char *file_url, char *result_file_source) {
+    if (
+        strncmp(file_url, "http://", 7) == 0 ||
+        strncmp(file_url, "https://", 8) == 0
+    ) {
+        result_file_source = busto_http_get(file_url);
+        if (!result_file_source) {
+            fprintf(
+                stderr,
+                "Failed to load busto script: %s\n",
+                file_url
+            );
+        }
+    }
+    else {
+        fprintf(
+            stderr,
+            "Unsupported file URL: %s\n",
+            file_url
+        );
+    }
+
+    free(file_url);
+    return result_file_source;
+}
+
 static void *fetch_url_thread(void *arg)
 {
     char *url = arg;
@@ -212,6 +269,7 @@ static void *fetch_url_thread(void *arg)
     char *result_content = NULL;
     char *result_title = NULL;
     char *result_script_source = NULL;
+    char *result_style_source = NULL;
     enum busto_content_mode result_mode = BUSTO_CONTENT_PLAIN;
 
     printf("Fetching URL: %s\n", url);
@@ -227,31 +285,16 @@ static void *fetch_url_thread(void *arg)
     else {
         char *content = busto_http_get(url);
         if (content) {
+            //find bustoscript
             char *script_url = find_busto_script_src(content);
+            //find style.css
+            char *style_url = find_busto_style_src(content);
 
+            if(style_url) {
+                result_style_source = load_file_url(style_url, result_style_source);
+            }
             if (script_url) {
-                if (
-                    strncmp(script_url, "http://", 7) == 0 ||
-                    strncmp(script_url, "https://", 8) == 0
-                ) {
-                    result_script_source = busto_http_get(script_url);
-                    if (!result_script_source) {
-                        fprintf(
-                            stderr,
-                            "Failed to load busto script: %s\n",
-                            script_url
-                        );
-                    }
-                }
-                else {
-                    fprintf(
-                        stderr,
-                        "Unsupported busto script URL: %s\n",
-                        script_url
-                    );
-                }
-
-                free(script_url);
+                result_script_source = load_file_url(script_url, result_script_source);
             }
 
             struct busto_html_document *doc = busto_html_parse(content);
@@ -309,6 +352,7 @@ static void *fetch_url_thread(void *arg)
     g_pending_result.content = result_content;
     g_pending_result.title = result_title;
     g_pending_result.script_source = result_script_source;
+    g_pending_result.style_source = result_style_source;
     g_pending_result.mode = result_mode;
     g_pending_result.ready = 1;
 
@@ -502,6 +546,7 @@ static void process_fetch_result(void)
     char *content = NULL;
     char *title = NULL;
     char *script_source = NULL;
+    char *style_source = NULL;
     enum busto_content_mode mode;
 
     pthread_mutex_lock(&g_fetch_mutex);
@@ -515,11 +560,13 @@ static void process_fetch_result(void)
     content = g_pending_result.content;
     title = g_pending_result.title;
     script_source = g_pending_result.script_source;
+    style_source = g_pending_result.style_source;
     mode = g_pending_result.mode;
 
     g_pending_result.content = NULL;
     g_pending_result.title = NULL;
     g_pending_result.script_source = NULL;
+    g_pending_result.style_source = NULL;
     g_pending_result.ready = 0;
 
     pthread_mutex_unlock(&g_fetch_mutex);
@@ -569,13 +616,10 @@ static void process_fetch_result(void)
     free(content);
     free(title);
     free(script_source);
+    free(style_source);
 }
 
 int main() {
-    printf("Starting Busto Browser...\n");
-    printf("Window keyboard input is active!\n");
-    printf("Press '?' in the window for help.\n\n");
-
     g_window = busto_window_create(1920, 1080);
     if (!g_window) {
         fprintf(stderr, "Failed to create window\n");
