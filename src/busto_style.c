@@ -118,7 +118,28 @@ const struct busto_style_rule *busto_stylesheet_find_tag(
     }
 
     for (i = 0; i < stylesheet->rule_count; i++) {
-        if (strcmp(stylesheet->rules[i].tag, tag) == 0) {
+        if (stylesheet->rules[i].selector_type == BUSTO_SELECTOR_TAG &&
+            strcmp(stylesheet->rules[i].tag, tag) == 0) {
+            return &stylesheet->rules[i];
+        }
+    }
+
+    return NULL;
+}
+
+const struct busto_style_rule *busto_stylesheet_find_class(
+    const struct busto_stylesheet *stylesheet,
+    const char *class_name
+) {
+    size_t i;
+
+    if (!stylesheet || !class_name) {
+        return NULL;
+    }
+
+    for (i = 0; i < stylesheet->rule_count; i++) {
+        if (stylesheet->rules[i].selector_type == BUSTO_SELECTOR_CLASS &&
+            strcmp(stylesheet->rules[i].tag, class_name) == 0) {
             return &stylesheet->rules[i];
         }
     }
@@ -175,7 +196,16 @@ void busto_stylesheet_parse(struct busto_stylesheet *stylesheet, const char *css
         *block_end = '\0';
 
         rule = &stylesheet->rules[stylesheet->rule_count];
-        snprintf(rule->tag, sizeof(rule->tag), "%s", selector_start);
+
+        if (selector_start[0] == '.') {
+            rule->selector_type = BUSTO_SELECTOR_CLASS;
+            snprintf(rule->tag, sizeof(rule->tag), "%s", selector_start + 1);
+        }
+        else {
+            rule->selector_type = BUSTO_SELECTOR_TAG;
+            snprintf(rule->tag, sizeof(rule->tag), "%s", selector_start);
+        }
+
         char *decl = block_start;
         while (decl && *decl) {
             char *colon;

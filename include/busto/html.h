@@ -6,6 +6,7 @@
 struct busto_html_element {
     char *tag;
     char *text;
+    char *class_name;
     struct busto_html_element *children;
     struct busto_html_element *next;
 };

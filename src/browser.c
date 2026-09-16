@@ -8,6 +8,7 @@
 #include "../include/busto/busto_style.h"
 #include "../include/busto/busto_script.h"
 #include "../include/busto/script_runtime.h"
+#include "../include/busto/key_repeat.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -481,7 +482,7 @@ static void *fetch_url_thread(void *arg)
             if(style_url) {
                 printf("STYLE_URL EXISTS!\n");
                 result_style_source = load_file_url(style_url, result_style_source);
-                printf("style_url: %s", result_style_source);
+                /* printf("style_url: %s", result_style_source); */
             }
 
             if(inline_style_source) {
@@ -621,6 +622,7 @@ static void handle_key(struct busto_window *window, const char *key, void *user_
         return;
     }
 
+    busto_script_key_press(key);
     (void)user_data;
     printf("Key received: '%s'\n", key);
     printf("LastKey received: '%s'\n", lastKey);
@@ -812,7 +814,8 @@ static void process_fetch_result(void)
     busto_script_unload();
 
     if (script_source) {
-        busto_script_compile_and_run(script_source, &g_busto_api);
+        /* busto_script_compile_and_run(script_source, &g_busto_api); */
+        busto_script_compile_and_start(script_source);
     }
 #endif
 
@@ -856,10 +859,20 @@ int main() {
     refresh_display();
 
 
+    double last_time = busto_now_ms() / 1000.0;
     //main loop
     while (busto_window_is_running(g_window)) {
+        //maybe hacky but we can convert ms to float seconds, idk if IEEE752 or whatever will fuck us
+        double now = busto_now_ms() / 1000.0;
+        double deltaT = now - last_time;
+        last_time = now;
+
         process_fetch_result();
-        //framerate tick
+        //busto script child tick
+        busto_script_pump_browser_messages(&g_busto_api);
+        busto_script_update(deltaT, busto_window_get_width(g_window), busto_window_get_height(g_window));
+        busto_script_pump_browser_messages(&g_busto_api);
+        //browser thread tick
         busto_window_update_repeats(g_window);
         //wait for events or timeout
         busto_window_poll(g_window, 16);

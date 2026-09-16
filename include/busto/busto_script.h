@@ -19,5 +19,9 @@ struct busto_api {
 };
 
 typedef void (*busto_script_main_fn)(struct busto_api *api);
+typedef void (*busto_script_start_fn)(struct busto_api *api);
+typedef void (*busto_script_update_fn)(struct busto_api *api, double deltaT);
+typedef void (*busto_script_on_key_press_fn)(struct busto_api *api, const char *key);
+typedef void (*busto_script_stop_fn)(struct busto_api *api);
 
 #endif

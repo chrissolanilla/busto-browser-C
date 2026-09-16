@@ -64,7 +64,7 @@ char *busto_http_get(const char *url) {
     curl_easy_cleanup(curl_handle);
     curl_global_cleanup();
 
-    printf("chunk.memory is: %s", chunk.memory);
+    /* printf("chunk.memory is: %s", chunk.memory); */
 
     return chunk.memory;
 }

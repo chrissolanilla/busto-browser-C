@@ -1,42 +1,71 @@
+
 #include <busto/busto_script.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
+#include <stdbool.h>
 
+static double x = 100.0;
+static double y = 100.0;
+static bool right_down = 0;
+static bool left_down = 0;
+static bool needs_render = true;
 
-void busto_main(struct busto_api *api)
-{
-    api->set_title("Busto Script Test");
-
-    api->set_content("Yo what up its dynamically set content");
-
-    system("touch penis.txt");
-
-    api->request_redraw();
-
-    int width = api->get_width();
-    int height = api->get_height();
-
+void busto_start(struct busto_api *api) {
+    api->set_title("Busto App");
     api->graphics.clear();
-    api->graphics.set_fill(0.961, 0.157, 0.569, 1);
+    needs_render = true;
+}
 
-    /* api->graphics.fill_rect(0, 0, 800, 600); */
-    api->graphics.fill_rect(width / 2, height / 2, 100, 100);
-    api->request_redraw();
-
-    int factor = 1;
-    for(int i =0;i<500; i++) {
-        width += 1 * factor;
-        height += 1 * factor;
-        api->graphics.clear();
-        api->graphics.fill_rect(width / 2, height / 2, 100, 100);
-
-        if(width > 800){
-            factor *= -1;
-        }
-
-        api->graphics.fill_rect(width / 2, height / 2, 100, 100);
-        api->request_redraw();
+void busto_update(struct busto_api *api, double dt) {
+    //dont render if no key presses ideally
+    (void)dt;
+    if(!needs_render) {
+        return;
     }
+    api->graphics.clear();
+    api->graphics.set_fill(1.0, 0.2, 0.6, 1.0);
+    api->graphics.fill_rect(x, y, 100, 100);
+    api->request_redraw();
+    needs_render = false;
+
+    if(x >500) {
+        api->set_title("You win!");
+        api->set_content("<p>You win!</p>");
+    }
+}
+
+void busto_on_key_press(struct busto_api *api, const char *key) {
+    (void)api;
+
+    if (!key) {
+        return;
+    }
+
+    bool key_pressed = false;
+    if (key[0] == 'd' && key[1] == '\0') {
+        x += 20.0;
+        key_pressed = true;
+    }
+
+    if (key[0] == 'a' && key[1] == '\0') {
+        x -= 20.0;
+        key_pressed = true;
+    }
+
+    if (key[0] == 'w' && key[1] == '\0') {
+        y -= 20.0;
+        key_pressed = true;
+    }
+
+    if (key[0] == 's' && key[1] == '\0') {
+        y += 20.0;
+        key_pressed = true;
+    }
+
+    if(key_pressed) {
+        needs_render = true;
+    }
+
+}
+
+void busto_stop(struct busto_api *api) {
+    //free shit? nah they can take it
 }

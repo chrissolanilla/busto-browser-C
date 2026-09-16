@@ -112,21 +112,39 @@ void busto_input_insert_text(struct busto_input *input, const char *text) {
 }
 
 void busto_input_handle_key(struct busto_input *input, const char *key) {
-    if (!input || !input->active || !key) return;
+    if (!input || !input->active || !key){
+        return;
+    }
 
     if (strcmp(key, "BackSpace") == 0) {
         busto_input_backspace(input);
-    } else if (strcmp(key, "Return") == 0) {
+    }
+
+    else if (strcmp(key, "Return") == 0) {
         busto_input_deactivate(input);
-    } else if (strcmp(key, "Left") == 0) {
-        if (input->cursor_pos > 0) input->cursor_pos--;
-    } else if (strcmp(key, "Right") == 0) {
-        if (input->cursor_pos < strlen(input->url)) input->cursor_pos++;
-    } else if (strcmp(key, "Home") == 0) {
+    }
+
+    else if (strcmp(key, "Left") == 0) {
+        if (input->cursor_pos > 0) {
+            input->cursor_pos--;
+        }
+    }
+
+    else if (strcmp(key, "Right") == 0) {
+        if (input->cursor_pos < strlen(input->url)) {
+            input->cursor_pos++;
+        }
+    }
+
+    else if (strcmp(key, "Home") == 0) {
         input->cursor_pos = 0;
-    } else if (strcmp(key, "End") == 0) {
+    }
+
+    else if (strcmp(key, "End") == 0) {
         input->cursor_pos = strlen(input->url);
-    } else if (strlen(key) == 1) {
+    }
+
+    else if (strlen(key) == 1) {
         busto_input_add_char(input, key[0]);
     }
 }

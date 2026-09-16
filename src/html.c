@@ -16,6 +16,81 @@ static char* find_tag_end(char* tag_start) {
     return end;
 }
 
+static char *extract_quoted_attr(char *tag_start, char *tag_end, const char *attr_name) {
+    char *cursor = tag_start;
+    size_t attr_len = strlen(attr_name);
+
+    while (cursor < tag_end) {
+        char *found = strstr(cursor, attr_name);
+        char *p;
+        char quote;
+        char *value_start;
+        char *value_end;
+        size_t value_len;
+        char *result;
+
+        if (!found || found >= tag_end) {
+            return NULL;
+        }
+
+        if (found > tag_start) {
+            char before = *(found - 1);
+            if (!isspace((unsigned char)before) && before != '<') {
+                cursor = found + attr_len;
+                continue;
+            }
+        }
+
+        p = found + attr_len;
+
+        while (p < tag_end && isspace((unsigned char)*p)) {
+            p++;
+        }
+
+        if (p >= tag_end || *p != '=') {
+            cursor = found + attr_len;
+            continue;
+        }
+
+        p++;
+
+        while (p < tag_end && isspace((unsigned char)*p)) {
+            p++;
+        }
+
+        if (p >= tag_end || (*p != '"' && *p != '\'')) {
+            cursor = found + attr_len;
+            continue;
+        }
+
+        quote = *p;
+        value_start = p + 1;
+        value_end = value_start;
+
+        while (value_end < tag_end && *value_end != quote) {
+            value_end++;
+        }
+
+        if (value_end >= tag_end) {
+            return NULL;
+        }
+
+        value_len = (size_t)(value_end - value_start);
+        result = malloc(value_len + 1);
+
+        if (!result) {
+            return NULL;
+        }
+
+        memcpy(result, value_start, value_len);
+        result[value_len] = '\0';
+
+        return result;
+    }
+
+    return NULL;
+}
+
 static int is_void_tag(const char *tag) {
     if (!tag) {
         return 0;
@@ -145,13 +220,39 @@ static struct busto_html_element* parse_element(char** html_ptr) {
 
     element->tag = tag_name;
 
+    char *full_tag_end = tag_end;
+
+    while (*full_tag_end && *full_tag_end != '>') full_tag_end++;
+
+    element->class_name = extract_quoted_attr(tag_start, full_tag_end, "class");
+    if (element->class_name) {
+        char *p = element->class_name;
+
+        while (*p && !isspace((unsigned char)*p)) {
+            p++;
+        }
+
+        *p = '\0';
+    }
+
     //skip to end of tag
-    html = tag_end;
-    while (*html && *html != '>') html++;
+    html = full_tag_end;
     if (*html == '>') html++;
 
     //check if it's a self-closing tag
     int self_closing = 0;
+    if (full_tag_end > tag_start) {
+        char *before_gt = full_tag_end - 1;
+
+        while (before_gt > tag_start && isspace((unsigned char)*before_gt)) {
+            before_gt--;
+        }
+
+        if (*before_gt == '/') {
+            self_closing = 1;
+        }
+    }
+
     if (*(tag_end - 1) == '/') {
         self_closing = 1;
     }
@@ -206,6 +307,7 @@ static void free_element_recursive(struct busto_html_element *element) {
 
     if (element->tag) free(element->tag);
     if (element->text) free(element->text);
+    if (element->class_name) free(element->class_name);
 
     struct busto_html_element *child = element->children;
     while (child) {
@@ -331,17 +433,37 @@ static int is_tag(const struct busto_html_element *e, const char *name) {
     return e && e->tag && strcmp(e->tag, name) == 0;
 }
 
-static const char* style_open_marker(const char *tag) {
+static const char* style_marker_name(const char *tag) {
     if (!tag) return NULL;
-    if (strcmp(tag, "h1") == 0) return "[[H1]]";
-    if (strcmp(tag, "h2") == 0) return "[[H2]]";
-    if (strcmp(tag, "h3") == 0) return "[[H3]]";
-    if (strcmp(tag, "h4") == 0) return "[[H4]]";
-    if (strcmp(tag, "h5") == 0) return "[[H5]]";
-    if (strcmp(tag, "h6") == 0) return "[[H6]]";
-    if (strcmp(tag, "p")  == 0) return "[[P]]";
-    if (strcmp(tag, "li") == 0) return "[[LI]]";
+    if (strcmp(tag, "h1") == 0) return "H1";
+    if (strcmp(tag, "h2") == 0) return "H2";
+    if (strcmp(tag, "h3") == 0) return "H3";
+    if (strcmp(tag, "h4") == 0) return "H4";
+    if (strcmp(tag, "h5") == 0) return "H5";
+    if (strcmp(tag, "h6") == 0) return "H6";
+    if (strcmp(tag, "p")  == 0) return "P";
+    if (strcmp(tag, "li") == 0) return "LI";
     return NULL;
+}
+
+static void append_open_marker(char *buffer,
+                               size_t buffer_size,
+                               const struct busto_html_element *element) {
+    const char *name = style_marker_name(element ? element->tag : NULL);
+    char marker[128];
+
+    if (!name) {
+        return;
+    }
+
+    if (element->class_name && element->class_name[0]) {
+        snprintf(marker, sizeof(marker), "[[%s:%s]]", name, element->class_name);
+    }
+    else {
+        snprintf(marker, sizeof(marker), "[[%s]]", name);
+    }
+
+    buf_append(buffer, buffer_size, marker);
 }
 
 static const char* style_close_marker(const char *tag) {
@@ -385,6 +507,25 @@ static void tb_append(struct busto_text_buffer *tb, const char *s) {
     tb->data[tb->len] = '\0';
 }
 
+static void tb_append_open_marker(struct busto_text_buffer *tb,
+                                  const struct busto_html_element *element) {
+    const char *name = style_marker_name(element ? element->tag : NULL);
+    char marker[128];
+
+    if (!name) {
+        return;
+    }
+
+    if (element->class_name && element->class_name[0]) {
+        snprintf(marker, sizeof(marker), "[[%s:%s]]", name, element->class_name);
+    }
+    else {
+        snprintf(marker, sizeof(marker), "[[%s]]", name);
+    }
+
+    tb_append(tb, marker);
+}
+
 void busto_html_extract_rich_text(struct busto_html_element *element,
                                  char *buffer, size_t buffer_size) {
     if (!element || !buffer || buffer_size == 0) {
@@ -400,10 +541,9 @@ void busto_html_extract_rich_text(struct busto_html_element *element,
         return;
     }
 
-    const char *open = style_open_marker(element->tag);
     const char *close = style_close_marker(element->tag);
 
-    if (open) buf_append(buffer, buffer_size, open);
+    append_open_marker(buffer, buffer_size, element);
 
     //br is new line
     if (is_tag(element, "br")) {
@@ -442,10 +582,9 @@ void busto_html_extract_rich_text_fast(struct busto_html_element *element,
         return;
     }
 
-    const char *open = style_open_marker(element->tag);
     const char *close = style_close_marker(element->tag);
 
-    if (open) tb_append(tb, open);
+    tb_append_open_marker(tb, element);
 
     if (is_tag(element, "br")) {
         tb_append(tb, "\n");

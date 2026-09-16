@@ -44,68 +44,101 @@ void busto_renderer_set_content_mode(enum busto_content_mode mode)
 
 static double font_for_marker(const char *line,
         const char **out_text_start,
-        const char **out_tag) {
+        const char **out_tag,
+        char *out_class,
+        size_t out_class_size) {
 
     *out_text_start = line;
     *out_tag = NULL;
+    if (out_class && out_class_size > 0) {
+        out_class[0] = '\0';
+    }
 
-    if (strncmp(line, "[[H1]]", 6) == 0) {
-        *out_text_start = line + 6;
-        *out_tag = "h1";
-        return 28.0;
-    }
-    if (strncmp(line, "[[H2]]", 6) == 0) {
-        *out_text_start = line + 6;
-        *out_tag = "h2";
-        return 22.0;
-    }
-    if (strncmp(line, "[[H3]]", 6) == 0) {
-        *out_text_start = line + 6;
-        *out_tag = "h3";
-        return 18.0;
-    }
-    if (strncmp(line, "[[H4]]", 6) == 0) {
-        *out_text_start = line + 6;
-        *out_tag = "h4";
-        return 16.0;
-    }
-    if (strncmp(line, "[[H5]]", 6) == 0) {
-        *out_text_start = line + 6;
-        *out_tag = "h5";
-        return 15.0;
-    }
-    if (strncmp(line, "[[H6]]", 6) == 0) {
-        *out_text_start = line + 6;
-        *out_tag = "h6";
-        return 14.0;
-    }
-    if (strncmp(line, "[[LI]]", 6) == 0) {
-        *out_text_start = line + 6;
-        *out_tag = "li";
-        return 14.0;
-    }
-    if (strncmp(line, "[[P]]", 5)  == 0) {
-        *out_text_start = line + 5;
-        *out_tag = "p";
-        return 14.0;
+    struct marker_style {
+        const char *marker;
+        const char *tag;
+        double font_size;
+    } markers[] = {
+        {"H1", "h1", 28.0},
+        {"H2", "h2", 22.0},
+        {"H3", "h3", 18.0},
+        {"H4", "h4", 16.0},
+        {"H5", "h5", 15.0},
+        {"H6", "h6", 14.0},
+        {"LI", "li", 14.0},
+        {"P",  "p",  14.0},
+    };
+
+    for (size_t i = 0; i < sizeof(markers) / sizeof(markers[0]); i++) {
+        size_t marker_len = strlen(markers[i].marker);
+        const char *after_marker;
+        const char *close;
+
+        if (strncmp(line, "[[", 2) != 0 ||
+            strncmp(line + 2, markers[i].marker, marker_len) != 0) {
+            continue;
+        }
+
+        after_marker = line + 2 + marker_len;
+
+        if (strncmp(after_marker, "]]", 2) == 0) {
+            *out_text_start = after_marker + 2;
+            *out_tag = markers[i].tag;
+            return markers[i].font_size;
+        }
+
+        if (*after_marker == ':') {
+            close = strstr(after_marker, "]]");
+
+            if (close) {
+                size_t class_len = (size_t)(close - (after_marker + 1));
+
+                if (out_class && out_class_size > 0) {
+                    if (class_len >= out_class_size) {
+                        class_len = out_class_size - 1;
+                    }
+
+                    memcpy(out_class, after_marker + 1, class_len);
+                    out_class[class_len] = '\0';
+                }
+
+                *out_text_start = close + 2;
+                *out_tag = markers[i].tag;
+                return markers[i].font_size;
+            }
+        }
     }
 
     return 14.0;
 }
 
+static const struct busto_style_rule *style_rule_for_text(
+    const char *tag,
+    const char *class_name
+) {
+    const struct busto_style_rule *rule = NULL;
+
+    if (class_name && class_name[0]) {
+        rule = busto_stylesheet_find_class(&renderer_state.stylesheet, class_name);
+    }
+
+    if (!rule && tag) {
+        rule = busto_stylesheet_find_tag(&renderer_state.stylesheet, tag);
+    }
+
+    return rule;
+}
+
 static void apply_text_background(
     cairo_t *cr,
     const char *tag,
+    const char *class_name,
     double x,
     double y,
     double width,
     double height
 ) {
-    const struct busto_style_rule *rule = NULL;
-
-    if (tag) {
-        rule = busto_stylesheet_find_tag(&renderer_state.stylesheet, tag);
-    }
+    const struct busto_style_rule *rule = style_rule_for_text(tag, class_name);
 
     if (!rule || !rule->has_background_color) {
         return;
@@ -142,12 +175,8 @@ static void apply_body_background(cairo_t *cr) {
     }
 }
 
-static void apply_text_color(cairo_t *cr, const char *tag) {
-    const struct busto_style_rule *rule = NULL;
-
-    if (tag) {
-        rule = busto_stylesheet_find_tag(&renderer_state.stylesheet, tag);
-    }
+static void apply_text_color(cairo_t *cr, const char *tag, const char *class_name) {
+    const struct busto_style_rule *rule = style_rule_for_text(tag, class_name);
 
     if (rule && rule->has_color) {
         cairo_set_source_rgba(
@@ -276,9 +305,10 @@ static void render_rich_content(
         if (strlen(line) > 0) {
             const char *text_start = NULL;
             const char *tag = NULL;
+            char class_name[64];
 
             double font_size =
-                font_for_marker(line, &text_start, &tag);
+                font_for_marker(line, &text_start, &tag, class_name, sizeof(class_name));
 
             char temp[1024];
 
@@ -291,13 +321,13 @@ static void render_rich_content(
 
             strip_close_markers(temp);
 
-            if (strncmp(line, "[[LI]]", 6) == 0) {
+            if (tag && strcmp(tag, "li") == 0) {
                 char with_bullet[1024];
 
                 snprintf(
                     with_bullet,
                     sizeof(with_bullet),
-                    "• %s",
+                    "• %.1018s",
                     temp
                 );
 
@@ -351,15 +381,14 @@ static void render_rich_content(
                     }
 
                     double text_x = 20;
-                    double text_y = y;
                     double rect_y = y - font_size;
                     //right now it starts slightly above the text
                     double rect_h = line_step+5;
                     double rect_w = max_width;
 
-                    apply_text_background(cr, tag, text_x, rect_y, rect_w, rect_h);
+                    apply_text_background(cr, tag, class_name, text_x, rect_y, rect_w, rect_h);
                     cairo_move_to(cr, 20, y);
-                    apply_text_color(cr, tag);
+                    apply_text_color(cr, tag, class_name);
                     cairo_show_text(cr, temp_line);
 
                     y += line_step;
@@ -367,16 +396,15 @@ static void render_rich_content(
             }
             else {
                 double text_x = 20;
-                double text_y = y;
                 double rect_y = y - font_size;
                 //for non wrapped stuff, background starts slightly above the text
                 double rect_h = line_step+5;
                 double rect_w = max_width;
 
-                apply_text_background(cr, tag, text_x, rect_y, rect_w, rect_h);
+                apply_text_background(cr, tag, class_name, text_x, rect_y, rect_w, rect_h);
 
                 cairo_move_to(cr, 20, y);
-                apply_text_color(cr, tag);
+                apply_text_color(cr, tag, class_name);
                 cairo_show_text(cr, temp);
 
                 y += line_step;
