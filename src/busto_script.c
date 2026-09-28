@@ -208,13 +208,7 @@ static void run_script_child(const char *so_path, int from_browser_fd, int to_br
     busto_script_stop_fn stop_fn = (busto_script_stop_fn)dlsym(handle, "busto_stop");
     busto_script_main_fn main_fn = (busto_script_main_fn)dlsym(handle, "busto_main");
 
-    if(start_fn) {
-        start_fn(&child_api);
-    }
-    else if(main_fn) {
-        main_fn(&child_api);
-    }
-
+    int did_start = 0;
     for(;;) {
         struct busto_browser_to_script_msg msg;
         ssize_t n = read(from_browser_fd, &msg, sizeof(msg));
@@ -226,11 +220,21 @@ static void run_script_child(const char *so_path, int from_browser_fd, int to_br
             continue;
         }
 
-        g_cached_width = msg.width;
-        g_cached_height = msg.height;
-
         switch (msg.type) {
             case BUSTO_BROWSER_TO_SCRIPT_UPDATE:
+                g_cached_width = msg.width;
+                g_cached_height = msg.height;
+
+                if(!did_start) {
+                    if(start_fn) {
+                        start_fn(&child_api);
+                    }
+                    else if(main_fn) {
+                        main_fn(&child_api);
+                    }
+                    did_start = 1;
+                }
+
                 if(update_fn) {
                     update_fn(&child_api, msg.deltaT);
                 }

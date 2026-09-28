@@ -860,17 +860,23 @@ int main() {
 
 
     double last_time = busto_now_ms() / 1000.0;
+    double script_accumulator = 0.0;
+    const double script_tick = 1.0 / 60.0;
     //main loop
     while (busto_window_is_running(g_window)) {
         //maybe hacky but we can convert ms to float seconds, idk if IEEE752 or whatever will fuck us
         double now = busto_now_ms() / 1000.0;
         double deltaT = now - last_time;
         last_time = now;
+        script_accumulator += deltaT;
 
         process_fetch_result();
         //busto script child tick
         busto_script_pump_browser_messages(&g_busto_api);
-        busto_script_update(deltaT, busto_window_get_width(g_window), busto_window_get_height(g_window));
+        if (script_accumulator >= script_tick) {
+            busto_script_update(script_accumulator, busto_window_get_width(g_window), busto_window_get_height(g_window));
+            script_accumulator = 0.0;
+        }
         busto_script_pump_browser_messages(&g_busto_api);
         //browser thread tick
         busto_window_update_repeats(g_window);
